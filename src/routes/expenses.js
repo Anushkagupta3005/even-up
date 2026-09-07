@@ -1,5 +1,6 @@
 const express = require('express');
 const db = require('../db');
+const { getChartData } = require('./chart');
 
 const router = express.Router();
 
@@ -122,6 +123,7 @@ router.post('/:groupId/expenses', (req, res) => {
     });
   } else {
     io.to(`group:${groupId}`).emit('expense_added', { ...expense, splits });
+    io.to(`group:${groupId}`).emit('balances_updated', getChartData(groupId));
   }
 
   res.status(201).json({ ...expense, splits });
@@ -224,6 +226,10 @@ router.post('/:groupId/expenses/:id/vote', (req, res) => {
       resolvedStatus === 'approved' ? 'expense_approved' : 'expense_rejected',
       { ...updatedExpense, splits, approve_count: approveCount, reject_count: rejectCount }
     );
+
+    if (resolvedStatus === 'approved') {
+      io.to(`group:${groupId}`).emit('balances_updated', getChartData(groupId));
+    }
 
     return res.json({ ...updatedExpense, splits, approve_count: approveCount, reject_count: rejectCount });
   }
