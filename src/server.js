@@ -22,6 +22,20 @@ app.set('io', io);
 io.on('connection', (socket) => {
   console.log(`Client connected: ${socket.id}`);
 
+  // Client tells the server which group they want live updates for.
+  // Room name is just "group:<id>" — Socket.io handles routing internally.
+  socket.on('join_group', (groupId) => {
+    const room = `group:${groupId}`;
+    socket.join(room);
+    console.log(`Socket ${socket.id} joined ${room}`);
+  });
+
+  socket.on('leave_group', (groupId) => {
+    const room = `group:${groupId}`;
+    socket.leave(room);
+    console.log(`Socket ${socket.id} left ${room}`);
+  });
+
   socket.on('disconnect', () => {
     console.log(`Client disconnected: ${socket.id}`);
   });
