@@ -1,10 +1,12 @@
 const express = require('express');
+const cors = require('cors');
 const groupsRouter = require('./routes/groups');
 const expensesRouter = require('./routes/expenses');
 const balancesRouter = require('./routes/balances');
 const settlementsRouter = require('./routes/settlements');
 
 const app = express();
+app.use(cors());
 app.use(express.json());
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
