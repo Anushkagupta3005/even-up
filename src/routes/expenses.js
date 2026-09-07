@@ -43,7 +43,7 @@ router.post('/:groupId/expenses', (req, res) => {
   }
 
   // Resolve the split rows
-  let splitRows;
+  let splitRows
 
   if (split_type === 'equal') {
     const participants = req.body.participants;
@@ -85,15 +85,21 @@ router.post('/:groupId/expenses', (req, res) => {
     splitRows = splits;
   }
 
+  const groupMembers = db
+    .prepare('SELECT user_id FROM group_members WHERE group_id = ?')
+    .all(groupId);
+  const totalMembers = groupMembers.length;
+  const status = group.approval_mode ? 'pending' : 'approved';
+
   const insertExpense = db.prepare(
-    'INSERT INTO expenses (group_id, paid_by, description, amount) VALUES (?, ?, ?, ?)'
+    'INSERT INTO expenses (group_id, paid_by, description, amount, status) VALUES (?, ?, ?, ?, ?)'
   );
   const insertSplit = db.prepare(
     'INSERT INTO splits (expense_id, user_id, share_amount) VALUES (?, ?, ?)'
   );
 
   const createExpense = db.transaction(() => {
-    const info = insertExpense.run(groupId, paid_by, description.trim(), amount);
+    const info = insertExpense.run(groupId, paid_by, description.trim(), amount, status);
     const expenseId = info.lastInsertRowid;
     for (const row of splitRows) {
       insertSplit.run(expenseId, row.user_id, row.share_amount);
@@ -106,7 +112,18 @@ router.post('/:groupId/expenses', (req, res) => {
   const expense = db.prepare('SELECT * FROM expenses WHERE id = ?').get(expenseId);
   const splits = db.prepare('SELECT * FROM splits WHERE expense_id = ?').all(expenseId);
   const io = req.app.get('io');
-  io.to(`group:${groupId}`).emit('expense_added', { ...expense, splits });
+
+  if (status === 'pending') {
+    io.to(`group:${groupId}`).emit('expense_pending', {
+      ...expense,
+      splits,
+      votes_needed: Math.floor(totalMembers / 2) + 1,
+      total_members: totalMembers,
+    });
+  } else {
+    io.to(`group:${groupId}`).emit('expense_added', { ...expense, splits });
+  }
+
   res.status(201).json({ ...expense, splits });
 });
 

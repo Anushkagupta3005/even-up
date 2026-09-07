@@ -97,5 +97,23 @@ router.post('/:id/members', (req, res) => {
 
   res.status(201).json({ group_id: Number(req.params.id), members });
 });
+// PATCH /api/groups/:id/approval-mode — toggle approval-mode on/off for a group
+// body: { approval_mode: true | false }
+router.patch('/:id/approval-mode', (req, res) => {
+  const group = db.prepare('SELECT * FROM groups WHERE id = ?').get(req.params.id);
+  if (!group) return res.status(404).json({ error: 'group not found' });
 
+  const { approval_mode } = req.body;
+  if (typeof approval_mode !== 'boolean') {
+    return res.status(400).json({ error: 'approval_mode must be true or false' });
+  }
+
+  db.prepare('UPDATE groups SET approval_mode = ? WHERE id = ?').run(
+    approval_mode ? 1 : 0,
+    req.params.id
+  );
+
+  const updated = db.prepare('SELECT * FROM groups WHERE id = ?').get(req.params.id);
+  res.json(updated);
+});
 module.exports = router;
