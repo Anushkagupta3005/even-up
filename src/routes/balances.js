@@ -26,13 +26,13 @@ router.get('/:groupId/balances', (req, res) => {
 
   const paidStmt = db.prepare(
     `SELECT COALESCE(SUM(amount), 0) AS total
-     FROM expenses WHERE group_id = ? AND paid_by = ?`
+     FROM expenses WHERE group_id = ? AND paid_by = ? AND status = 'approved'`
   );
   const owedStmt = db.prepare(
     `SELECT COALESCE(SUM(s.share_amount), 0) AS total
      FROM splits s
      JOIN expenses e ON e.id = s.expense_id
-     WHERE e.group_id = ? AND s.user_id = ?`
+     WHERE e.group_id = ? AND s.user_id = ? AND e.status = 'approved'`
   );
 
   const balances = members.map((m) => {
