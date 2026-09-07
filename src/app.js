@@ -2,6 +2,7 @@ const express = require('express');
 const groupsRouter = require('./routes/groups');
 const expensesRouter = require('./routes/expenses');
 const balancesRouter = require('./routes/balances');
+const settlementsRouter = require('./routes/settlements');
 
 const app = express();
 app.use(express.json());
@@ -11,6 +12,7 @@ app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 app.use('/api/groups', groupsRouter);
 app.use('/api/groups', expensesRouter);
 app.use('/api/groups', balancesRouter);
+app.use('/api/groups', settlementsRouter);
 
 // 404 fallback
 app.use((_req, res) => res.status(404).json({ error: 'not found' }));
