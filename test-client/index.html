@@ -4,7 +4,7 @@
   <title>EvenUp — Live Test Client</title>
   <style>
     body { font-family: sans-serif; max-width: 600px; margin: 40px auto; }
-    #log { border: 1px solid #ccc; padding: 12px; min-height: 300px; overflow-y: auto; background: #f9f9f9; }
+    #log { border: 1px solid #ccc; padding: 12px; min-height: 200px; overflow-y: auto; background: #f9f9f9; }
     .event { margin-bottom: 8px; padding: 8px; border-radius: 4px; }
     .added { background: #e8f5e9; }
     .pending { background: #fff8e1; }
@@ -13,12 +13,23 @@
     .rejected { background: #ffcdd2; font-weight: bold; }
     input, button { padding: 8px; margin: 4px 0; }
     .vote-btns button { margin-right: 6px; }
+    #chart { border: 1px solid #ccc; padding: 12px; margin-bottom: 16px; background: #fafafa; }
+    .bar-row { display: flex; align-items: center; margin-bottom: 6px; font-size: 14px; }
+    .bar-label { width: 90px; flex-shrink: 0; }
+    .bar-track { flex-grow: 1; background: #eee; height: 18px; position: relative; margin: 0 8px; }
+    .bar-fill { height: 100%; }
+    .bar-fill.positive { background: #4caf50; }
+    .bar-fill.negative { background: #e53935; }
+    .bar-value { width: 70px; text-align: right; flex-shrink: 0; }
   </style>
 </head>
 <body>
   <h2>EvenUp — Live Expense Feed</h2>
   <p>Group ID: <input type="number" id="groupId" value="1" /> <button onclick="joinGroup()">Join Group</button></p>
   <p id="status">Not joined yet.</p>
+
+  <h3>Live Net Balances</h3>
+  <div id="chart"><em>Waiting for balance data...</em></div>
 
   <p>
     Vote as user:
@@ -38,6 +49,7 @@
     const socket = io('http://localhost:3000');
     const log = document.getElementById('log');
     const status = document.getElementById('status');
+    const chart = document.getElementById('chart');
     let currentGroupId = null;
 
     socket.on('connect', () => {
@@ -48,6 +60,10 @@
       currentGroupId = document.getElementById('groupId').value;
       socket.emit('join_group', currentGroupId);
       status.textContent = `Joined group:${currentGroupId}. Waiting for live expense updates...`;
+      fetch(`http://localhost:3000/api/groups/${currentGroupId}/chart-data`)
+        .then((r) => r.json())
+        .then(renderChart)
+        .catch((err) => console.error(err));
     }
 
     function castVote(vote) {
@@ -71,6 +87,22 @@
       log.prepend(div);
     }
 
+    function renderChart(data) {
+      const maxAbs = Math.max(1, ...data.net_balances.map((b) => Math.abs(b.net)));
+      chart.innerHTML = data.net_balances
+        .map((b) => {
+          const pct = Math.round((Math.abs(b.net) / maxAbs) * 100);
+          const cls = b.net >= 0 ? 'positive' : 'negative';
+          return `
+            <div class="bar-row">
+              <span class="bar-label">${b.name}</span>
+              <div class="bar-track"><div class="bar-fill ${cls}" style="width:${pct}%"></div></div>
+              <span class="bar-value">₹${b.net}</span>
+            </div>`;
+        })
+        .join('');
+    }
+
     socket.on('expense_added', (expense) => {
       addLogEntry('added', `✅ Expense added: "${expense.description}" — ₹${expense.amount} (paid by user ${expense.paid_by})`);
     });
@@ -89,6 +121,11 @@
 
     socket.on('expense_rejected', (expense) => {
       addLogEntry('rejected', `❌ REJECTED: "${expense.description}" — ₹${expense.amount} (${expense.reject_count} reject votes)`);
+    });
+
+    socket.on('balances_updated', (data) => {
+      renderChart(data);
+      addLogEntry('vote', `📊 Balances updated live — total group spend: ₹${data.total_group_spend}`);
     });
   </script>
 </body>
