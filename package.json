@@ -12,7 +12,8 @@
   "dependencies": {
     "@prisma/client": "^6.2.1",
     "better-sqlite3": "^11.8.1",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "socket.io": "^4.8.3"
   },
   "devDependencies": {
     "prisma": "^6.2.1"
