@@ -109,7 +109,7 @@ router.patch('/:id/approval-mode', (req, res) => {
   }
 
   db.prepare('UPDATE groups SET approval_mode = ? WHERE id = ?').run(
-    approval_mode ? 1 : 0,
+    approval_mode ? 1 : 0 ,
     req.params.id
   );
 
