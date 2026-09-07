@@ -154,4 +154,89 @@ router.get('/:groupId/expenses/:id', (req, res) => {
   res.json({ ...expense, splits });
 });
 
+
+// POST /api/groups/:groupId/expenses/:id/vote — cast a vote on a pending expense
+// body: { user_id, vote: "approve" | "reject" }
+router.post('/:groupId/expenses/:id/vote', (req, res) => {
+  const groupId = Number(req.params.groupId);
+  const expenseId = Number(req.params.id);
+  const { user_id, vote } = req.body;
+
+  const group = db.prepare('SELECT * FROM groups WHERE id = ?').get(groupId);
+  if (!group) return res.status(404).json({ error: 'group not found' });
+
+  const expense = db
+    .prepare('SELECT * FROM expenses WHERE id = ? AND group_id = ?')
+    .get(expenseId, groupId);
+  if (!expense) return res.status(404).json({ error: 'expense not found' });
+
+  if (expense.status !== 'pending') {
+    return res.status(409).json({ error: `expense is already ${expense.status}, voting is closed` });
+  }
+
+  if (!['approve', 'reject'].includes(vote)) {
+    return res.status(400).json({ error: 'vote must be "approve" or "reject"' });
+  }
+
+  const isMember = db
+    .prepare('SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ?')
+    .get(groupId, user_id);
+  if (!isMember) return res.status(400).json({ error: 'user_id must be a member of this group' });
+
+  try {
+    db.prepare(
+      'INSERT INTO expense_votes (expense_id, user_id, vote) VALUES (?, ?, ?)'
+    ).run(expenseId, user_id, vote);
+  } catch (err) {
+    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      return res.status(409).json({ error: 'user has already voted on this expense' });
+    }
+    throw err;
+  }
+
+  const totalMembers = db
+    .prepare('SELECT COUNT(*) AS c FROM group_members WHERE group_id = ?')
+    .get(groupId).c;
+  const majorityThreshold = Math.floor(totalMembers / 2) + 1;
+
+  const approveCount = db
+    .prepare("SELECT COUNT(*) AS c FROM expense_votes WHERE expense_id = ? AND vote = 'approve'")
+    .get(expenseId).c;
+  const rejectCount = db
+    .prepare("SELECT COUNT(*) AS c FROM expense_votes WHERE expense_id = ? AND vote = 'reject'")
+    .get(expenseId).c;
+
+  const io = req.app.get('io');
+  let resolvedStatus = null;
+
+  if (approveCount >= majorityThreshold) {
+    resolvedStatus = 'approved';
+  } else if (rejectCount > totalMembers - majorityThreshold) {
+    resolvedStatus = 'rejected';
+  }
+
+  if (resolvedStatus) {
+    db.prepare('UPDATE expenses SET status = ? WHERE id = ?').run(resolvedStatus, expenseId);
+    const updatedExpense = db.prepare('SELECT * FROM expenses WHERE id = ?').get(expenseId);
+    const splits = db.prepare('SELECT * FROM splits WHERE expense_id = ?').all(expenseId);
+
+    io.to(`group:${groupId}`).emit(
+      resolvedStatus === 'approved' ? 'expense_approved' : 'expense_rejected',
+      { ...updatedExpense, splits, approve_count: approveCount, reject_count: rejectCount }
+    );
+
+    return res.json({ ...updatedExpense, splits, approve_count: approveCount, reject_count: rejectCount });
+  }
+
+  io.to(`group:${groupId}`).emit('expense_vote_cast', {
+    expense_id: expenseId,
+    approve_count: approveCount,
+    reject_count: rejectCount,
+    votes_needed: majorityThreshold,
+    total_members: totalMembers,
+  });
+
+  res.json({ ...expense, approve_count: approveCount, reject_count: rejectCount, votes_needed: majorityThreshold });
+});
+
 module.exports = router;
