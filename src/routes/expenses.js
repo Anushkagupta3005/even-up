@@ -105,7 +105,8 @@ router.post('/:groupId/expenses', (req, res) => {
 
   const expense = db.prepare('SELECT * FROM expenses WHERE id = ?').get(expenseId);
   const splits = db.prepare('SELECT * FROM splits WHERE expense_id = ?').all(expenseId);
-
+  const io = req.app.get('io');
+  io.to(`group:${groupId}`).emit('expense_added', { ...expense, splits });
   res.status(201).json({ ...expense, splits });
 });
 
