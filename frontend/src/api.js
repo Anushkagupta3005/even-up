@@ -56,6 +56,7 @@ export const api = {
   createGroup: (name, base_currency) =>
     request('/groups', { method: 'POST', body: { name, base_currency }, auth: false }),
   listGroups: () => request('/groups', { auth: false }),
+  myGroups: () => request('/groups/mine'),
   getGroup: (groupId) => request(`/groups/${groupId}`, { auth: false }),
   addMember: (groupId, payload) =>
     request(`/groups/${groupId}/members`, { method: 'POST', body: payload }),
