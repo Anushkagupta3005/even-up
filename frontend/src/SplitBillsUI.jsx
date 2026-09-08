@@ -180,8 +180,31 @@ function OnboardScreen({ onStart }) {
 function HomeScreen({ groupId, currentUser, onAddExpense, onExport }) {
   const [chartData, setChartData] = React.useState(null);
   const [group, setGroup] = React.useState(null);
+  const [pendingExpenses, setPendingExpenses] = React.useState([]);
+  const [voting, setVoting] = React.useState({});
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
+
+  async function refreshPending() {
+    try {
+      const all = await api.listExpenses(groupId);
+      setPendingExpenses(all.filter((e) => e.status === "pending"));
+    } catch (err) {
+      // non-fatal, pending list just stays stale
+    }
+  }
+
+  async function handleVote(expenseId, vote) {
+    setVoting((prev) => ({ ...prev, [expenseId]: true }));
+    try {
+      await api.vote(groupId, expenseId, vote);
+      await refreshPending();
+    } catch (err) {
+      setError(err.message || "Failed to cast vote");
+    } finally {
+      setVoting((prev) => ({ ...prev, [expenseId]: false }));
+    }
+  }
 
   React.useEffect(() => {
     if (!groupId) return;
@@ -191,13 +214,15 @@ function HomeScreen({ groupId, currentUser, onAddExpense, onExport }) {
       setLoading(true);
       setError("");
       try {
-        const [chart, groupDetail] = await Promise.all([
+        const [chart, groupDetail, allExpenses] = await Promise.all([
           api.getChartData(groupId),
           api.getGroup(groupId),
+          api.listExpenses(groupId),
         ]);
         if (!cancelled) {
           setChartData(chart);
           setGroup(groupDetail);
+          setPendingExpenses(allExpenses.filter((e) => e.status === "pending"));
         }
       } catch (err) {
         if (!cancelled) setError(err.message || "Failed to load");
@@ -212,6 +237,18 @@ function HomeScreen({ groupId, currentUser, onAddExpense, onExport }) {
     socket.emit("join_group", groupId);
     socket.on("balances_updated", (data) => {
       if (!cancelled) setChartData(data);
+    });
+    socket.on("expense_pending", () => {
+      if (!cancelled) refreshPending();
+    });
+    socket.on("expense_vote_cast", () => {
+      if (!cancelled) refreshPending();
+    });
+    socket.on("expense_approved", () => {
+      if (!cancelled) refreshPending();
+    });
+    socket.on("expense_rejected", () => {
+      if (!cancelled) refreshPending();
     });
 
     return () => {
@@ -318,6 +355,70 @@ function HomeScreen({ groupId, currentUser, onAddExpense, onExport }) {
           </div>
         </div>
       </div>
+
+      {pendingExpenses.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: WHITE, marginBottom: 8 }}>Needs your approval</div>
+          {pendingExpenses.map((exp) => (
+            <div
+              key={exp.id}
+              style={{
+                background: CARD_NAVY,
+                border: `1px solid ${LIME}`,
+                borderRadius: 14,
+                padding: "12px 14px",
+                marginBottom: 8,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: WHITE }}>{exp.description}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: LIME }}>&#8377;{exp.amount}</span>
+              </div>
+              <div style={{ fontSize: 11, color: MUTED, marginBottom: 10 }}>
+                Paid by user {exp.paid_by}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={() => handleVote(exp.id, "approve")}
+                  disabled={voting[exp.id]}
+                  style={{
+                    flex: 1,
+                    background: LIME,
+                    color: NAVY,
+                    border: "none",
+                    borderRadius: 10,
+                    padding: "8px 0",
+                    fontSize: 12.5,
+                    fontWeight: 700,
+                    cursor: voting[exp.id] ? "default" : "pointer",
+                    opacity: voting[exp.id] ? 0.6 : 1,
+                  }}
+                >
+                  Approve
+                </button>
+                <button
+                  onClick={() => handleVote(exp.id, "reject")}
+                  disabled={voting[exp.id]}
+                  style={{
+                    flex: 1,
+                    background: "transparent",
+                    color: RED,
+                    border: `1px solid ${RED}`,
+                    borderRadius: 10,
+                    padding: "8px 0",
+                    fontSize: 12.5,
+                    fontWeight: 700,
+                    cursor: voting[exp.id] ? "default" : "pointer",
+                    opacity: voting[exp.id] ? 0.6 : 1,
+                  }}
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
         <span style={{ fontSize: 14, fontWeight: 700, color: WHITE }}>Net balances</span>
