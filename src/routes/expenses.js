@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { getChartData } = require('./chart');
+const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -17,14 +18,14 @@ function roundToCents(n) {
 //   participants: [userId, ...]              // required for "equal"
 //   splits: [{ user_id, share_amount }, ...]  // required for "custom"
 // }
-router.post('/:groupId/expenses', (req, res) => {
+router.post('/:groupId/expenses', requireAuth, (req, res) => {
   const groupId = Number(req.params.groupId);
   const group = db.prepare('SELECT * FROM groups WHERE id = ?').get(groupId);
   if (!group) return res.status(404).json({ error: 'group not found' });
 
-  const { paid_by, description, amount, split_type } = req.body;
+  const paid_by = req.user.id;
+  const { description, amount, split_type } = req.body;
 
-  if (!paid_by) return res.status(400).json({ error: 'paid_by is required' });
   if (!description || !description.trim())
     return res.status(400).json({ error: 'description is required' });
   if (typeof amount !== 'number' || amount <= 0)
@@ -159,10 +160,11 @@ router.get('/:groupId/expenses/:id', (req, res) => {
 
 // POST /api/groups/:groupId/expenses/:id/vote — cast a vote on a pending expense
 // body: { user_id, vote: "approve" | "reject" }
-router.post('/:groupId/expenses/:id/vote', (req, res) => {
+router.post('/:groupId/expenses/:id/vote', requireAuth, (req, res) => {
   const groupId = Number(req.params.groupId);
   const expenseId = Number(req.params.id);
-  const { user_id, vote } = req.body;
+  const user_id = req.user.id;
+  const { vote } = req.body;
 
   const group = db.prepare('SELECT * FROM groups WHERE id = ?').get(groupId);
   if (!group) return res.status(404).json({ error: 'group not found' });

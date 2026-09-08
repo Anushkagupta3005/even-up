@@ -1,5 +1,6 @@
 const express = require('express');
 const db = require('../db');
+const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -48,7 +49,7 @@ router.get('/:id', (req, res) => {
 
 // POST /api/groups/:id/members — add a member to a group
 // body: { user_id } OR { name, email } to create-and-add in one step
-router.post('/:id/members', (req, res) => {
+router.post('/:id/members', requireAuth, (req, res) => {
   const group = db.prepare('SELECT * FROM groups WHERE id = ?').get(req.params.id);
   if (!group) return res.status(404).json({ error: 'group not found' });
 
@@ -99,7 +100,7 @@ router.post('/:id/members', (req, res) => {
 });
 // PATCH /api/groups/:id/approval-mode — toggle approval-mode on/off for a group
 // body: { approval_mode: true | false }
-router.patch('/:id/approval-mode', (req, res) => {
+router.patch('/:id/approval-mode', requireAuth, (req, res) => {
   const group = db.prepare('SELECT * FROM groups WHERE id = ?').get(req.params.id);
   if (!group) return res.status(404).json({ error: 'group not found' });
 
