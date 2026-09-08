@@ -1,5 +1,7 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const authRouter = require('./routes/auth');
 const groupsRouter = require('./routes/groups');
 const expensesRouter = require('./routes/expenses');
 const balancesRouter = require('./routes/balances');
@@ -17,6 +19,7 @@ app.use('/api/groups', expensesRouter);
 app.use('/api/groups', balancesRouter);
 app.use('/api/groups', settlementsRouter);
 app.use('/api/groups', chartRouter);
+app.use('/api/auth', authRouter);
 
 // 404 fallback
 app.use((_req, res) => res.status(404).json({ error: 'not found' }));
