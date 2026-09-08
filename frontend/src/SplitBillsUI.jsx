@@ -567,8 +567,74 @@ function ProfileScreen() {
   );
 }
 
-function AddExpenseScreen({ onBack, onScanReceipt }) {
+function AddExpenseScreen({ groupId, onBack, onScanReceipt, onSuccess }) {
   const [split, setSplit] = useState("equal");
+  const [title, setTitle] = useState("");
+  const [amount, setAmount] = useState("");
+  const [members, setMembers] = useState([]);
+  const [selected, setSelected] = useState({});
+  const [customAmounts, setCustomAmounts] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  React.useEffect(() => {
+    if (!groupId) return;
+    let cancelled = false;
+    api.getGroup(groupId).then((group) => {
+      if (cancelled) return;
+      setMembers(group.members || []);
+      const initial = {};
+      (group.members || []).forEach((m) => { initial[m.id] = true; });
+      setSelected(initial);
+      setLoading(false);
+    }).catch((err) => {
+      if (!cancelled) { setError(err.message || "Failed to load group members"); setLoading(false); }
+    });
+    return () => { cancelled = true; };
+  }, [groupId]);
+
+  const selectedIds = Object.keys(selected).filter((id) => selected[id]).map(Number);
+  const numAmount = parseFloat(amount) || 0;
+  const equalShare = selectedIds.length > 0 ? (numAmount / selectedIds.length) : 0;
+  const customSum = selectedIds.reduce((s, id) => s + (parseFloat(customAmounts[id]) || 0), 0);
+
+  function toggleMember(id) {
+    setSelected((prev) => ({ ...prev, [id]: !prev[id] }));
+  }
+
+  async function handleSubmit() {
+    setError("");
+    if (!title.trim()) return setError("Title is required");
+    if (numAmount <= 0) return setError("Enter a valid amount");
+    if (selectedIds.length === 0) return setError("Select at least one person to split with");
+
+    let payload;
+    if (split === "equal") {
+      payload = { description: title.trim(), amount: numAmount, split_type: "equal", participants: selectedIds };
+    } else {
+      if (Math.abs(customSum - numAmount) > 0.01) {
+        return setError("Custom amounts must sum to " + numAmount + " (currently " + customSum.toFixed(2) + ")");
+      }
+      payload = {
+        description: title.trim(),
+        amount: numAmount,
+        split_type: "custom",
+        splits: selectedIds.map((id) => ({ user_id: id, share_amount: parseFloat(customAmounts[id]) || 0 })),
+      };
+    }
+
+    setSubmitting(true);
+    try {
+      await api.addExpense(groupId, payload);
+      onSuccess();
+    } catch (err) {
+      setError(err.message || "Failed to add expense");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <div style={{ padding: "18px 18px 8px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
@@ -605,6 +671,8 @@ function AddExpenseScreen({ onBack, onScanReceipt }) {
       <div style={{ marginBottom: 14 }}>
         <label style={{ fontSize: 11.5, color: MUTED, marginBottom: 6, display: "block" }}>Title</label>
         <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
           placeholder="Dinner at Cafe"
           style={{
             width: "100%",
@@ -622,7 +690,10 @@ function AddExpenseScreen({ onBack, onScanReceipt }) {
       <div style={{ marginBottom: 18 }}>
         <label style={{ fontSize: 11.5, color: MUTED, marginBottom: 6, display: "block" }}>Amount</label>
         <input
-          placeholder="$0.00"
+          type="number"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          placeholder="0.00"
           style={{
             width: "100%",
             background: CARD_NAVY,
@@ -665,33 +736,53 @@ function AddExpenseScreen({ onBack, onScanReceipt }) {
 
       <div style={{ marginBottom: 22 }}>
         <label style={{ fontSize: 11.5, color: MUTED, marginBottom: 8, display: "block" }}>Split with</label>
-        <div style={{ display: "flex", gap: 8 }}>
-          {splitMembers.map((m) => (
-            <Avatar key={m.name} initial={m.initial} bg={m.bg} size={36} />
-          ))}
-        </div>
+        {loading ? (
+          <div style={{ fontSize: 12, color: MUTED }}>Loading members...</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {members.map((m) => (
+              <div
+                key={m.id}
+                onClick={() => toggleMember(m.id)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  background: CARD_NAVY,
+                  border: `1px solid ${selected[m.id] ? LIME : ROW_NAVY}`,
+                  borderRadius: 12,
+                  padding: "8px 12px",
+                  cursor: "pointer",
+                }}
+              >
+                <Avatar initial={m.name[0].toUpperCase()} bg={selected[m.id] ? LIME : ROW_NAVY} size={30} />
+                <span style={{ flex: 1, fontSize: 13, color: WHITE }}>{m.name}</span>
+                {split === "custom" && selected[m.id] && (
+                  <input
+                    type="number"
+                    value={customAmounts[m.id] || ""}
+                    onChange={(e) => { e.stopPropagation(); setCustomAmounts((prev) => ({ ...prev, [m.id]: e.target.value })); }}
+                    onClick={(e) => e.stopPropagation()}
+                    placeholder="0.00"
+                    style={{ width: 70, background: NAVY, border: `1px solid ${ROW_NAVY}`, borderRadius: 8, padding: "5px 8px", fontSize: 12, color: WHITE }}
+                  />
+                )}
+                {split === "equal" && selected[m.id] && (
+                  <span style={{ fontSize: 12, color: LIME, fontWeight: 600 }}>{equalShare.toFixed(2)}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          background: "rgba(214,242,60,0.08)",
-          border: `1px solid ${LIME}`,
-          borderRadius: 12,
-          padding: "10px 12px",
-          marginBottom: 18,
-        }}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={LIME} strokeWidth="2">
-          <path d="M12 8v4l3 3" />
-          <circle cx="12" cy="12" r="9" />
-        </svg>
-        <span style={{ fontSize: 11.5, color: LIME }}>Above $50 needs group approval before it's added</span>
-      </div>
+      {error && (
+        <div style={{ color: RED, fontSize: 12.5, marginBottom: 14 }}>{error}</div>
+      )}
 
       <button
+        onClick={handleSubmit}
+        disabled={submitting}
         style={{
           width: "100%",
           background: LIME,
@@ -701,10 +792,11 @@ function AddExpenseScreen({ onBack, onScanReceipt }) {
           padding: "14px 0",
           fontSize: 14,
           fontWeight: 700,
-          cursor: "pointer",
+          cursor: submitting ? "default" : "pointer",
+          opacity: submitting ? 0.7 : 1,
         }}
       >
-        Add expense
+        {submitting ? "Adding..." : "Add expense"}
       </button>
     </div>
   );
@@ -1138,7 +1230,7 @@ export default function SplitBillsUI({ currentUser, groupId, onSignOut }) {
     split: <SplitScreen />,
     report: <ReportScreen />,
     profile: <ProfileScreen />,
-    addExpense: <AddExpenseScreen onBack={() => setScreen("home")} onScanReceipt={() => setScreen("receipt")} />,
+    addExpense: <AddExpenseScreen groupId={groupId} onBack={() => setScreen("home")} onScanReceipt={() => setScreen("receipt")} onSuccess={() => setScreen("home")} />,
     receipt: <ReceiptUploadScreen onBack={() => setScreen("addExpense")} onConfirm={() => setScreen("home")} />,
     export: <ExportShareScreen onBack={() => setScreen("home")} />,
   };
