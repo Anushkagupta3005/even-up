@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import { io } from "socket.io-client";
+import { api, SOCKET_URL } from "./api";
 
 const NAVY = "#10131C";
 const CARD_NAVY = "#171B26";
@@ -175,31 +177,112 @@ function OnboardScreen({ onStart }) {
   );
 }
 
-function HomeScreen({ onAddExpense, onExport }) {
-  const total = participants.reduce((s, p) => s + p.pct, 0);
+function HomeScreen({ groupId, currentUser, onAddExpense, onExport }) {
+  const [chartData, setChartData] = React.useState(null);
+  const [group, setGroup] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState("");
+
+  React.useEffect(() => {
+    if (!groupId) return;
+    let cancelled = false;
+
+    async function load() {
+      setLoading(true);
+      setError("");
+      try {
+        const [chart, groupDetail] = await Promise.all([
+          api.getChartData(groupId),
+          api.getGroup(groupId),
+        ]);
+        if (!cancelled) {
+          setChartData(chart);
+          setGroup(groupDetail);
+        }
+      } catch (err) {
+        if (!cancelled) setError(err.message || "Failed to load");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+
+    const socket = io(SOCKET_URL);
+    socket.emit("join_group", groupId);
+    socket.on("balances_updated", (data) => {
+      if (!cancelled) setChartData(data);
+    });
+
+    return () => {
+      cancelled = true;
+      socket.disconnect();
+    };
+  }, [groupId]);
+
+  if (loading) {
+    return <div style={{ padding: 24, color: MUTED, fontSize: 13 }}>Loading...</div>;
+  }
+  if (error) {
+    return <div style={{ padding: 24, color: RED, fontSize: 13 }}>{error}</div>;
+  }
+  if (!chartData || chartData.spending_by_person.length === 0) {
+    return (
+      <div style={{ padding: 24 }}>
+        <div style={{ fontSize: 18, fontWeight: 700, color: WHITE, marginBottom: 8 }}>
+          Welcome, {currentUser?.name}
+        </div>
+        <div style={{ fontSize: 13, color: MUTED, marginBottom: 20 }}>
+          No expenses yet in {group?.name || "your group"}. Add one to get started.
+        </div>
+        <button
+          onClick={onAddExpense}
+          style={{ background: LIME, color: NAVY, border: "none", borderRadius: 14, padding: "14px 20px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
+        >
+          + Add expense
+        </button>
+      </div>
+    );
+  }
+
+  const spenders = chartData.spending_by_person.filter((p) => p.paid > 0);
+  const totalSpend = chartData.total_group_spend || 1;
+  const colorPalette = [TEAL, WHITE, LIME, BLUE, "#E8A63C", RED];
+  const withPct = spenders.map((p, i) => ({
+    ...p,
+    pct: Math.round((p.paid / totalSpend) * 100),
+    color: colorPalette[i % colorPalette.length],
+  }));
+
   const circumference = 2 * Math.PI * 46;
   let offset = 0;
+
+  const settled = chartData.net_balances.filter((b) => Math.abs(b.net) < 0.01).length;
+  const totalMembers = chartData.net_balances.length;
+  const settledPct = totalMembers > 0 ? Math.round((settled / totalMembers) * 100) : 0;
 
   return (
     <div style={{ padding: "18px 18px 8px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
         <div>
           <div style={{ fontSize: 12, color: MUTED }}>Welcome back</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: WHITE }}>Anushka</div>
-          <div style={{ fontSize: 11, color: LIME, fontWeight: 600, marginTop: 2 }}>Goa Trip &middot; 4 members</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: WHITE }}>{currentUser?.name}</div>
+          <div style={{ fontSize: 11, color: LIME, fontWeight: 600, marginTop: 2 }}>
+            {group?.name} &middot; {totalMembers} member{totalMembers !== 1 ? "s" : ""}
+          </div>
         </div>
-        <Avatar initial="A" bg="#E8A63C" size={36} />
+        <Avatar initial={(currentUser?.name || "?")[0].toUpperCase()} bg="#E8A63C" size={36} />
       </div>
 
       <div style={{ background: LIME, borderRadius: 18, padding: "18px", marginBottom: 20 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
           <svg width="96" height="96" viewBox="0 0 100 100">
-            {participants.map((p) => {
-              const len = (p.pct / total) * circumference;
+            {withPct.map((p) => {
+              const len = (p.pct / 100) * circumference;
               const dash = `${len} ${circumference - len}`;
               const el = (
                 <circle
-                  key={p.name}
+                  key={p.user_id}
                   cx="50"
                   cy="50"
                   r="46"
@@ -216,16 +299,16 @@ function HomeScreen({ onAddExpense, onExport }) {
               return el;
             })}
             <text x="50" y="46" textAnchor="middle" fontSize="15" fontWeight="700" fill={NAVY}>
-              $503.00
+              &#8377;{totalSpend}
             </text>
             <text x="50" y="60" textAnchor="middle" fontSize="8" fill="#5A5A20">
               Total bill
             </text>
           </svg>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: NAVY, marginBottom: 8 }}>4 Participants</div>
-            {participants.map((p) => (
-              <div key={p.name} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: NAVY, marginBottom: 8 }}>{withPct.length} Participants</div>
+            {withPct.map((p) => (
+              <div key={p.user_id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>
                 <span style={{ width: 7, height: 7, borderRadius: "50%", background: p.color === LIME ? NAVY : p.color, display: "inline-block" }} />
                 <span style={{ fontSize: 11.5, color: "#3A3A10" }}>
                   <b>{p.pct}%</b> {p.name}
@@ -237,7 +320,7 @@ function HomeScreen({ onAddExpense, onExport }) {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-        <span style={{ fontSize: 14, fontWeight: 700, color: WHITE }}>Payment status</span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: WHITE }}>Net balances</span>
         <button onClick={onExport} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={LIME} strokeWidth="2">
             <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
@@ -246,42 +329,33 @@ function HomeScreen({ onAddExpense, onExport }) {
         </button>
       </div>
       <div style={{ background: ROW_NAVY, borderRadius: 999, height: 20, marginBottom: 6, position: "relative", overflow: "hidden" }}>
-        <div style={{ width: "60%", height: "100%", background: TEAL, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "flex-end", paddingRight: 8 }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: NAVY }}>60%</span>
+        <div style={{ width: `${settledPct}%`, height: "100%", background: TEAL, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "flex-end", paddingRight: 8 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: NAVY }}>{settledPct}%</span>
         </div>
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: MUTED, marginBottom: 14 }}>
-        <span>$140 Total sent</span>
-        <span>$503.00 Total bill</span>
+        <span>{settled} of {totalMembers} settled</span>
+        <span>&#8377;{totalSpend} Total bill</span>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 12, background: CARD_NAVY, borderRadius: 14, padding: "10px 12px", marginBottom: 8, border: `1px solid ${LIME}` }}>
-        <div style={{ width: 34, height: 34, borderRadius: "50%", background: "rgba(214,242,60,0.15)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={LIME} strokeWidth="2">
-            <path d="M12 8v4l3 3" />
-            <circle cx="12" cy="12" r="9" />
-          </svg>
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: WHITE }}>Scuba diving add-on</div>
-          <div style={{ fontSize: 11, color: LIME, fontWeight: 600 }}>Needs approval &middot; 2 of 4 voted</div>
-        </div>
-        <div style={{ fontSize: 13, fontWeight: 700, color: LIME }}>$85.00</div>
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 220, overflowY: "auto" }}>
-        {payments.map((p) => (
-          <div key={p.name} style={{ display: "flex", alignItems: "center", gap: 12, background: CARD_NAVY, borderRadius: 14, padding: "10px 12px" }}>
-            <Avatar initial={p.initial} bg={p.bg} size={34} />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: WHITE }}>{p.name}</div>
-              <div style={{ fontSize: 11, color: p.ok ? TEAL : RED, fontWeight: 600 }}>
-                {p.pct}% {p.status}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 320, overflowY: "auto" }}>
+        {chartData.net_balances.map((b) => {
+          const ok = b.net >= 0;
+          return (
+            <div key={b.user_id} style={{ display: "flex", alignItems: "center", gap: 12, background: CARD_NAVY, borderRadius: 14, padding: "10px 12px" }}>
+              <Avatar initial={b.name[0].toUpperCase()} bg={ok ? TEAL : RED} size={34} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: WHITE }}>{b.name}</div>
+                <div style={{ fontSize: 11, color: ok ? TEAL : RED, fontWeight: 600 }}>
+                  {ok ? "is owed" : "owes"}
+                </div>
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: ok ? TEAL : RED, fontVariantNumeric: "tabular-nums" }}>
+                &#8377;{Math.abs(b.net)}
               </div>
             </div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: p.ok ? TEAL : RED, fontVariantNumeric: "tabular-nums" }}>{p.amount}</div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -1053,13 +1127,13 @@ function Sidebar({ screen, setScreen }) {
   );
 }
 
-export default function SplitBillsUI() {
+export default function SplitBillsUI({ currentUser, groupId, onSignOut }) {
   const [screen, setScreen] = useState("onboard");
   const isDesktop = useIsDesktop();
 
   const screenMap = {
     onboard: <OnboardScreen onStart={() => setScreen("home")} />,
-    home: <HomeScreen onAddExpense={() => setScreen("addExpense")} onExport={() => setScreen("export")} />,
+    home: <HomeScreen groupId={groupId} currentUser={currentUser} onAddExpense={() => setScreen("addExpense")} onExport={() => setScreen("export")} />,
     history: <SplitScreen />,
     split: <SplitScreen />,
     report: <ReportScreen />,
