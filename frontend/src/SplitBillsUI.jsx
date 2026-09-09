@@ -270,7 +270,7 @@ function HomeScreen({ groupId, currentUser, onAddExpense, onExport }) {
   if (error) {
     return <div style={{ padding: 24, color: RED, fontSize: 13 }}>{error}</div>;
   }
-  if (!chartData || chartData.spending_by_person.length === 0) {
+  if ((!chartData || chartData.spending_by_person.length === 0) && pendingExpenses.length === 0) {
     return (
       <div style={{ padding: 24 }}>
         <div style={{ fontSize: 18, fontWeight: 700, color: WHITE, marginBottom: 8 }}>
@@ -289,12 +289,62 @@ function HomeScreen({ groupId, currentUser, onAddExpense, onExport }) {
     );
   }
 
+  if ((!chartData || chartData.spending_by_person.length === 0) && pendingExpenses.length > 0) {
+    return (
+      <div style={{ padding: 24 }}>
+        <div style={{ fontSize: 18, fontWeight: 700, color: WHITE, marginBottom: 8 }}>
+          Welcome, {currentUser?.name}
+        </div>
+        <div style={{ fontSize: 13, color: MUTED, marginBottom: 20 }}>
+          No approved expenses yet in {group?.name || "your group"}, but you have pending approvals below.
+        </div>
+        {pendingExpenses.map((exp) => (
+          <div
+            key={exp.id}
+            style={{
+              background: CARD_NAVY,
+              border: `1px solid ${LIME}`,
+              borderRadius: 14,
+              padding: "12px 14px",
+              marginBottom: 8,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: WHITE }}>{exp.description}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: LIME }}>&#8377;{exp.amount}</span>
+            </div>
+            <div style={{ fontSize: 11, color: MUTED, marginBottom: 10 }}>
+              Paid by user {exp.paid_by}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => handleVote(exp.id, "approve")}
+                disabled={voting[exp.id]}
+                style={{ flex: 1, background: LIME, color: NAVY, border: "none", borderRadius: 10, padding: "8px 0", fontSize: 12.5, fontWeight: 700, cursor: voting[exp.id] ? "default" : "pointer", opacity: voting[exp.id] ? 0.6 : 1 }}
+              >
+                Approve
+              </button>
+              <button
+                onClick={() => handleVote(exp.id, "reject")}
+                disabled={voting[exp.id]}
+                style={{ flex: 1, background: "transparent", color: RED, border: `1px solid ${RED}`, borderRadius: 10, padding: "8px 0", fontSize: 12.5, fontWeight: 700, cursor: voting[exp.id] ? "default" : "pointer", opacity: voting[exp.id] ? 0.6 : 1 }}
+              >
+                Reject
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   const spenders = chartData.spending_by_person.filter((p) => p.paid > 0);
-  const totalSpend = chartData.total_group_spend || 1;
+  const totalSpend = chartData.total_group_spend || 0;
+  const totalSpendForMath = totalSpend || 1; // avoid divide-by-zero in percentage math only
   const colorPalette = [TEAL, WHITE, LIME, BLUE, "#E8A63C", RED];
   const withPct = spenders.map((p, i) => ({
     ...p,
-    pct: Math.round((p.paid / totalSpend) * 100),
+    pct: Math.round((p.paid / totalSpendForMath) * 100),
     color: colorPalette[i % colorPalette.length],
   }));
 
