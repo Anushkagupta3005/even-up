@@ -616,18 +616,18 @@ function ReportScreen() {
   );
 }
 
-function ProfileScreen() {
+function ProfileScreen({ currentUser, onSignOut }) {
   const rows = [
-    { label: "Groups joined", value: "3" },
-    { label: "Total settled", value: "$4,120" },
-    { label: "Pending approvals", value: "1" },
+    { label: "Groups joined", value: "-" },
+    { label: "Total settled", value: "-" },
+    { label: "Pending approvals", value: "-" },
   ];
   return (
     <div style={{ padding: "18px 18px 8px" }}>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 20 }}>
-        <Avatar initial="A" bg="#E8A63C" size={64} />
-        <div style={{ fontSize: 16, fontWeight: 700, color: WHITE, marginTop: 10 }}>Anushka</div>
-        <div style={{ fontSize: 12, color: MUTED }}>anushka@example.com</div>
+        <Avatar initial={(currentUser?.name || "?")[0].toUpperCase()} bg="#E8A63C" size={64} />
+        <div style={{ fontSize: 16, fontWeight: 700, color: WHITE, marginTop: 10 }}>{currentUser?.name}</div>
+        <div style={{ fontSize: 12, color: MUTED }}>{currentUser?.email}</div>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
@@ -650,6 +650,7 @@ function ProfileScreen() {
       </div>
 
       <button
+        onClick={onSignOut}
         style={{
           width: "100%",
           background: CARD_NAVY,
@@ -1330,7 +1331,7 @@ export default function SplitBillsUI({ currentUser, groupId, onSignOut }) {
     history: <SplitScreen />,
     split: <SplitScreen />,
     report: <ReportScreen />,
-    profile: <ProfileScreen />,
+    profile: <ProfileScreen currentUser={currentUser} onSignOut={onSignOut} />,
     addExpense: <AddExpenseScreen groupId={groupId} onBack={() => setScreen("home")} onScanReceipt={() => setScreen("receipt")} onSuccess={() => setScreen("home")} />,
     receipt: <ReceiptUploadScreen onBack={() => setScreen("addExpense")} onConfirm={() => setScreen("home")} />,
     export: <ExportShareScreen onBack={() => setScreen("home")} />,
