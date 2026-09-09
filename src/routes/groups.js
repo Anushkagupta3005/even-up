@@ -29,6 +29,21 @@ router.get('/', (_req, res) => {
   res.json(groups);
 });
 
+// GET /api/groups/mine — list groups the logged-in user belongs to
+router.get('/mine', requireAuth, (req, res) => {
+  const groups = db
+    .prepare(
+      `SELECT g.*
+       FROM groups g
+       JOIN group_members gm ON gm.group_id = g.id
+       WHERE gm.user_id = ?
+       ORDER BY g.created_at DESC`
+    )
+    .all(req.user.id);
+
+  res.json(groups);
+});
+
 // GET /api/groups/:id — get one group with its members
 router.get('/:id', (req, res) => {
   const group = db.prepare('SELECT * FROM groups WHERE id = ?').get(req.params.id);
