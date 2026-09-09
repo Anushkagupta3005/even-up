@@ -30,7 +30,11 @@ export default function AuthScreen({ onAuthenticated }) {
       setStoredUser(result.user);
       onAuthenticated(result.user);
     } catch (err) {
-      setError(err.message || 'Something went wrong');
+      if (err.message === 'Failed to fetch') {
+        setError('Cannot reach the server. Please check your connection and try again.');
+      } else {
+        setError(err.message || 'Something went wrong');
+      }
     } finally {
       setLoading(false);
     }

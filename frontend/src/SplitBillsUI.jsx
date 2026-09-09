@@ -2,6 +2,13 @@ import React, { useState } from "react";
 import { io } from "socket.io-client";
 import { api, SOCKET_URL } from "./api";
 
+function friendlyError(err, fallback) {
+  if (err && err.message === "Failed to fetch") {
+    return "Cannot reach the server. Please check your connection and try again.";
+  }
+  return (err && err.message) || fallback;
+}
+
 const NAVY = "#10131C";
 const CARD_NAVY = "#171B26";
 const ROW_NAVY = "#1D2230";
@@ -200,7 +207,7 @@ function HomeScreen({ groupId, currentUser, onAddExpense, onExport }) {
       await api.vote(groupId, expenseId, vote);
       await refreshPending();
     } catch (err) {
-      setError(err.message || "Failed to cast vote");
+      setError(friendlyError(err, "Failed to cast vote"));
     } finally {
       setVoting((prev) => ({ ...prev, [expenseId]: false }));
     }
@@ -225,7 +232,7 @@ function HomeScreen({ groupId, currentUser, onAddExpense, onExport }) {
           setPendingExpenses(allExpenses.filter((e) => e.status === "pending"));
         }
       } catch (err) {
-        if (!cancelled) setError(err.message || "Failed to load");
+        if (!cancelled) setError(friendlyError(err, "Failed to load"));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -691,7 +698,7 @@ function AddExpenseScreen({ groupId, onBack, onScanReceipt, onSuccess }) {
       setSelected(initial);
       setLoading(false);
     }).catch((err) => {
-      if (!cancelled) { setError(err.message || "Failed to load group members"); setLoading(false); }
+      if (!cancelled) { setError(friendlyError(err, "Failed to load group members")); setLoading(false); }
     });
     return () => { cancelled = true; };
   }, [groupId]);
@@ -731,7 +738,7 @@ function AddExpenseScreen({ groupId, onBack, onScanReceipt, onSuccess }) {
       await api.addExpense(groupId, payload);
       onSuccess();
     } catch (err) {
-      setError(err.message || "Failed to add expense");
+      setError(friendlyError(err, "Failed to add expense"));
     } finally {
       setSubmitting(false);
     }
