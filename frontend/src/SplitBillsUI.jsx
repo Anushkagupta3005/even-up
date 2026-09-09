@@ -313,8 +313,16 @@ function HomeScreen({ groupId, currentUser, onAddExpense, onExport }) {
               <span style={{ fontSize: 13, fontWeight: 600, color: WHITE }}>{exp.description}</span>
               <span style={{ fontSize: 13, fontWeight: 700, color: LIME }}>&#8377;{exp.amount}</span>
             </div>
-            <div style={{ fontSize: 11, color: MUTED, marginBottom: 10 }}>
+            <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>
               Paid by user {exp.paid_by}
+            </div>
+            <div style={{ fontSize: 10.5, color: MUTED, marginBottom: 10 }}>
+              {(() => {
+                const total = group?.members?.length || 1;
+                const approveNeeded = Math.floor(total / 2) + 1;
+                const rejectNeeded = total - approveNeeded + 1;
+                return `Needs ${approveNeeded}/${total} to approve, ${rejectNeeded}/${total} to reject`;
+              })()}
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <button
@@ -431,8 +439,16 @@ function HomeScreen({ groupId, currentUser, onAddExpense, onExport }) {
                 <span style={{ fontSize: 13, fontWeight: 600, color: WHITE }}>{exp.description}</span>
                 <span style={{ fontSize: 13, fontWeight: 700, color: LIME }}>&#8377;{exp.amount}</span>
               </div>
-              <div style={{ fontSize: 11, color: MUTED, marginBottom: 10 }}>
+              <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>
                 Paid by user {exp.paid_by}
+              </div>
+              <div style={{ fontSize: 10.5, color: MUTED, marginBottom: 10 }}>
+                {(() => {
+                  const total = totalMembers;
+                  const approveNeeded = Math.floor(total / 2) + 1;
+                  const rejectNeeded = total - approveNeeded + 1;
+                  return `Needs ${approveNeeded}/${total} to approve, ${rejectNeeded}/${total} to reject`;
+                })()}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button
