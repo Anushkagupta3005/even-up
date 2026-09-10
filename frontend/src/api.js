@@ -1,5 +1,6 @@
-const API_BASE = 'http://localhost:3000/api';
-const SOCKET_URL = 'http://localhost:3000';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
+const API_BASE = `${BACKEND_URL}/api`;
+const SOCKET_URL = BACKEND_URL;
 
 function getToken() {
   return localStorage.getItem('evenup_token');
