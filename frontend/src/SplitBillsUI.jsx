@@ -183,6 +183,7 @@ function HomeScreen({ groupId, currentUser, onAddExpense, onExport }) {
   const [chartData, setChartData] = React.useState(null);
   const [group, setGroup] = React.useState(null);
   const [pendingExpenses, setPendingExpenses] = React.useState([]);
+  const [settlements, setSettlements] = React.useState([]);
   const [voting, setVoting] = React.useState({});
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
@@ -216,15 +217,17 @@ function HomeScreen({ groupId, currentUser, onAddExpense, onExport }) {
       setLoading(true);
       setError("");
       try {
-        const [chart, groupDetail, allExpenses] = await Promise.all([
+        const [chart, groupDetail, allExpenses, settlementData] = await Promise.all([
           api.getChartData(groupId),
           api.getGroup(groupId),
           api.listExpenses(groupId),
+          api.getSettlements(groupId),
         ]);
         if (!cancelled) {
           setChartData(chart);
           setGroup(groupDetail);
           setPendingExpenses(allExpenses.filter((e) => e.status === "pending"));
+          setSettlements(settlementData.settlements || []);
         }
       } catch (err) {
         if (!cancelled) setError(friendlyError(err, "Failed to load"));
@@ -238,7 +241,10 @@ function HomeScreen({ groupId, currentUser, onAddExpense, onExport }) {
     const socket = io(SOCKET_URL);
     socket.emit("join_group", groupId);
     socket.on("balances_updated", (data) => {
-      if (!cancelled) setChartData(data);
+      if (!cancelled) {
+        setChartData(data);
+        api.getSettlements(groupId).then((s) => { if (!cancelled) setSettlements(s.settlements || []); }).catch(() => {});
+      }
     });
     socket.on("expense_pending", () => {
       if (!cancelled) refreshPending();
@@ -526,6 +532,41 @@ function HomeScreen({ groupId, currentUser, onAddExpense, onExport }) {
           );
         })}
       </div>
+
+      {/* Settle Up — minimized transactions */}
+      {settlements.length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={LIME} strokeWidth="2">
+              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span style={{ fontSize: 14, fontWeight: 700, color: WHITE }}>Settle up</span>
+            <span style={{ fontSize: 11, color: MUTED, marginLeft: "auto" }}>
+              {settlements.length} payment{settlements.length !== 1 ? "s" : ""} needed
+            </span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {settlements.map((s, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, background: CARD_NAVY, borderRadius: 14, padding: "12px 14px" }}>
+                <Avatar initial={s.from_name[0].toUpperCase()} bg={RED} size={32} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: WHITE }}>{s.from_name}</span>
+                    <svg width="16" height="10" viewBox="0 0 20 10" fill="none">
+                      <path d="M0 5h16M13 1l4 4-4 4" stroke={LIME} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: WHITE }}>{s.to_name}</span>
+                  </div>
+                  <div style={{ fontSize: 10.5, color: MUTED }}>{s.from_name === currentUser?.name ? "You pay" : s.to_name === currentUser?.name ? "You receive" : "Transfer"}</div>
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: LIME, fontVariantNumeric: "tabular-nums" }}>
+                  &#8377;{s.amount}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
