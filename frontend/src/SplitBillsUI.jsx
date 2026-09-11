@@ -979,10 +979,10 @@ function ProfileScreen({ currentUser, onSignOut }) {
   );
 }
 
-function AddExpenseScreen({ groupId, onBack, onScanReceipt, onSuccess }) {
+function AddExpenseScreen({ groupId, onBack, onScanReceipt, onSuccess, prefill }) {
   const [split, setSplit] = useState("equal");
-  const [title, setTitle] = useState("");
-  const [amount, setAmount] = useState("");
+  const [title, setTitle] = useState(prefill?.title || "");
+  const [amount, setAmount] = useState(prefill?.amount ? String(prefill.amount) : "");
   const [members, setMembers] = useState([]);
   const [selected, setSelected] = useState({});
   const [customAmounts, setCustomAmounts] = useState({});
@@ -1214,15 +1214,54 @@ function AddExpenseScreen({ groupId, onBack, onScanReceipt, onSuccess }) {
   );
 }
 
-const scannedItems = [
-  { name: "Paneer tikka", price: 320, category: "Food" },
-  { name: "Cold coffee x2", price: 240, category: "Beverages" },
-  { name: "Garlic naan x3", price: 180, category: "Food" },
-];
 
-function ReceiptUploadScreen({ onBack, onConfirm }) {
-  const [stage, setStage] = useState("upload");
-  const total = scannedItems.reduce((s, i) => s + i.price, 0);
+
+function ReceiptUploadScreen({ onBack, onUseResult }) {
+  const [stage, setStage] = useState("upload"); // upload | scanning | extracted | error
+  const [preview, setPreview] = useState(null);
+  const [result, setResult] = useState(null); // { raw_text, structured }
+  const [error, setError] = useState("");
+  const [statusMsg, setStatusMsg] = useState("");
+  const fileInputRef = React.useRef(null);
+
+  async function handleFile(file) {
+    if (!file) return;
+    setPreview(URL.createObjectURL(file));
+    setStage("scanning");
+    setError("");
+    setStatusMsg("Running OCR on your receipt...");
+    try {
+      const data = await api.parseReceipt(file);
+      setResult(data);
+      if (data.structured) {
+        setStage("extracted");
+      } else {
+        setError(data.message || "Could not structure the receipt. Raw text is shown below.");
+        setStage("error");
+      }
+    } catch (err) {
+      setError(friendlyError(err, "Failed to process receipt"));
+      setStage("error");
+    }
+  }
+
+  function handleFileInput(e) {
+    const file = e.target.files?.[0];
+    if (file) handleFile(file);
+  }
+
+  const s = result?.structured;
+  const items = s?.items || [];
+  const total = s?.total || items.reduce((sum, it) => sum + (it.amount || 0), 0);
+
+  function handleUseResult() {
+    if (!s) return;
+    onUseResult({
+      title: s.merchant && s.merchant !== "Unknown" ? s.merchant : (items[0]?.name || "Receipt expense"),
+      amount: total,
+      items,
+    });
+  }
 
   return (
     <div style={{ padding: "18px 18px 8px" }}>
@@ -1235,9 +1274,19 @@ function ReceiptUploadScreen({ onBack, onConfirm }) {
         <span style={{ fontSize: 15, fontWeight: 700, color: WHITE }}>Scan receipt</span>
       </div>
 
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={handleFileInput}
+      />
+
       {stage === "upload" && (
         <>
           <div
+            onClick={() => fileInputRef.current?.click()}
             style={{
               position: "relative",
               background: "#0A0C12",
@@ -1248,6 +1297,7 @@ function ReceiptUploadScreen({ onBack, onConfirm }) {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              cursor: "pointer",
             }}
           >
             <svg width="120" height="150" viewBox="0 0 120 150" style={{ opacity: 0.5 }}>
@@ -1295,24 +1345,16 @@ function ReceiptUploadScreen({ onBack, onConfirm }) {
           </div>
 
           <div style={{ fontSize: 11.5, color: MUTED, textAlign: "center", marginBottom: 18 }}>
-            Line the receipt up inside the frame
+            Tap above or use the buttons below to upload a receipt photo
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <button
+              onClick={() => fileInputRef.current?.click()}
               style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
-                background: CARD_NAVY,
-                color: WHITE,
-                border: `1px solid ${ROW_NAVY}`,
-                borderRadius: 14,
-                padding: "13px 0",
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                background: CARD_NAVY, color: WHITE, border: `1px solid ${ROW_NAVY}`,
+                borderRadius: 14, padding: "13px 0", fontSize: 13, fontWeight: 600, cursor: "pointer",
               }}
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={WHITE} strokeWidth="1.8">
@@ -1322,20 +1364,11 @@ function ReceiptUploadScreen({ onBack, onConfirm }) {
               From gallery
             </button>
             <button
-              onClick={() => setStage("scanning")}
+              onClick={() => { fileInputRef.current.setAttribute("capture", "environment"); fileInputRef.current.click(); }}
               style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
-                background: LIME,
-                color: NAVY,
-                border: "none",
-                borderRadius: 14,
-                padding: "13px 0",
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                background: LIME, color: NAVY, border: "none",
+                borderRadius: 14, padding: "13px 0", fontSize: 13, fontWeight: 700, cursor: "pointer",
               }}
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={NAVY} strokeWidth="2">
@@ -1349,7 +1382,10 @@ function ReceiptUploadScreen({ onBack, onConfirm }) {
       )}
 
       {stage === "scanning" && (
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 20px" }}>
+          {preview && (
+            <img src={preview} alt="Receipt" style={{ width: 140, height: 180, objectFit: "cover", borderRadius: 12, marginBottom: 20, opacity: 0.7 }} />
+          )}
           <div style={{ position: "relative", width: 56, height: 56, marginBottom: 18 }}>
             <svg width="56" height="56" viewBox="0 0 56 56" style={{ animation: "evenup-spin 1s linear infinite" }}>
               <circle cx="28" cy="28" r="24" fill="none" stroke={ROW_NAVY} strokeWidth="4" />
@@ -1358,87 +1394,116 @@ function ReceiptUploadScreen({ onBack, onConfirm }) {
             <style>{`@keyframes evenup-spin { to { transform: rotate(360deg); } }`}</style>
           </div>
           <div style={{ fontSize: 13.5, fontWeight: 600, color: WHITE, marginBottom: 4 }}>Reading your receipt</div>
-          <div style={{ fontSize: 11.5, color: MUTED, textAlign: "center", marginBottom: 24 }}>
-            Running OCR, then sorting items into categories
+          <div style={{ fontSize: 11.5, color: MUTED, textAlign: "center" }}>
+            {statusMsg}
           </div>
+        </div>
+      )}
+
+      {stage === "error" && (
+        <div style={{ padding: "20px 0" }}>
+          <div style={{ color: RED, fontSize: 13, marginBottom: 14, textAlign: "center" }}>{error}</div>
+          {result?.raw_text && (
+            <div style={{ background: CARD_NAVY, borderRadius: 12, padding: 14, marginBottom: 14 }}>
+              <div style={{ fontSize: 11, color: MUTED, marginBottom: 6 }}>Raw OCR text</div>
+              <div style={{ fontSize: 11.5, color: WHITE, whiteSpace: "pre-wrap", fontFamily: "monospace", maxHeight: 200, overflow: "auto" }}>
+                {result.raw_text}
+              </div>
+            </div>
+          )}
           <button
-            onClick={() => setStage("extracted")}
+            onClick={() => { setStage("upload"); setResult(null); setError(""); setPreview(null); }}
             style={{
-              background: "none",
-              border: `1px solid ${ROW_NAVY}`,
-              color: MUTED,
-              borderRadius: 12,
-              padding: "9px 20px",
-              fontSize: 12,
-              cursor: "pointer",
+              width: "100%", background: CARD_NAVY, color: WHITE, border: `1px solid ${ROW_NAVY}`,
+              borderRadius: 14, padding: "13px 0", fontSize: 13, fontWeight: 600, cursor: "pointer",
             }}
           >
-            Skip to results
+            Try another photo
           </button>
         </div>
       )}
 
-      {stage === "extracted" && (
+      {stage === "extracted" && s && (
         <>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              fontSize: 11.5,
-              color: TEAL,
-              marginBottom: 14,
-            }}
-          >
+          {/* Confidence + merchant */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, color: TEAL, marginBottom: 6 }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={TEAL} strokeWidth="2">
               <path d="M20 6L9 17l-5-5" />
             </svg>
-            Extracted 3 items &middot; review before adding
+            Extracted {items.length} item{items.length !== 1 ? "s" : ""} &middot; {s.confidence || "medium"} confidence
           </div>
 
-          <div style={{ background: CARD_NAVY, borderRadius: 14, overflow: "hidden", marginBottom: 14 }}>
-            {scannedItems.map((it, i) => (
-              <div
-                key={it.name}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "12px 14px",
-                  borderBottom: i < scannedItems.length - 1 ? `1px solid ${ROW_NAVY}` : "none",
-                }}
-              >
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: WHITE }}>{it.name}</div>
-                  <div style={{ fontSize: 10.5, color: MUTED }}>{it.category}</div>
-                </div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: WHITE, fontVariantNumeric: "tabular-nums" }}>
-                  &#8377;{it.price}
-                </div>
-              </div>
-            ))}
-          </div>
+          {s.merchant && s.merchant !== "Unknown" && (
+            <div style={{ fontSize: 16, fontWeight: 700, color: WHITE, marginBottom: 4 }}>{s.merchant}</div>
+          )}
+          {s.date && <div style={{ fontSize: 11, color: MUTED, marginBottom: 12 }}>{s.date}</div>}
+          {s.notes && <div style={{ fontSize: 11, color: MUTED, marginBottom: 12, fontStyle: "italic" }}>{s.notes}</div>}
 
+          {/* Items list */}
+          {items.length > 0 && (
+            <div style={{ background: CARD_NAVY, borderRadius: 14, overflow: "hidden", marginBottom: 14 }}>
+              {items.map((it, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10, padding: "12px 14px",
+                    borderBottom: i < items.length - 1 ? `1px solid ${ROW_NAVY}` : "none",
+                  }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: WHITE }}>{it.name}</div>
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: WHITE, fontVariantNumeric: "tabular-nums" }}>
+                    {s.currency === "INR" ? "₹" : "$"}{it.amount}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Tax / service charge if present */}
+          {(s.tax > 0 || s.service_charge > 0) && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10, padding: "0 2px" }}>
+              {s.tax > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: MUTED }}>
+                  <span>Tax/GST</span>
+                  <span>{s.currency === "INR" ? "₹" : "$"}{s.tax}</span>
+                </div>
+              )}
+              {s.service_charge > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: MUTED }}>
+                  <span>Service charge</span>
+                  <span>{s.currency === "INR" ? "₹" : "$"}{s.service_charge}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Total */}
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 18, padding: "0 2px" }}>
             <span style={{ fontSize: 13, color: MUTED }}>Total</span>
-            <span style={{ fontSize: 15, fontWeight: 700, color: LIME }}>&#8377;{total}</span>
+            <span style={{ fontSize: 15, fontWeight: 700, color: LIME }}>{s.currency === "INR" ? "₹" : "$"}{total}</span>
           </div>
 
+          {/* Action buttons */}
           <button
-            onClick={onConfirm}
+            onClick={handleUseResult}
             style={{
-              width: "100%",
-              background: LIME,
-              color: NAVY,
-              border: "none",
-              borderRadius: 14,
-              padding: "14px 0",
-              fontSize: 14,
-              fontWeight: 700,
-              cursor: "pointer",
+              width: "100%", background: LIME, color: NAVY, border: "none",
+              borderRadius: 14, padding: "14px 0", fontSize: 14, fontWeight: 700, cursor: "pointer",
+              marginBottom: 10,
             }}
           >
-            Confirm and split
+            Use this — add as expense
+          </button>
+          <button
+            onClick={() => { setStage("upload"); setResult(null); setError(""); setPreview(null); }}
+            style={{
+              width: "100%", background: "transparent", color: MUTED, border: `1px solid ${ROW_NAVY}`,
+              borderRadius: 14, padding: "12px 0", fontSize: 13, fontWeight: 600, cursor: "pointer",
+            }}
+          >
+            Try another photo
           </button>
         </>
       )}
@@ -1635,6 +1700,7 @@ function Sidebar({ screen, setScreen, currentUser }) {
 
 export default function SplitBillsUI({ currentUser, groupId, onSignOut, onGroupChange }) {
   const [screen, setScreen] = useState("onboard");
+  const [receiptPrefill, setReceiptPrefill] = useState(null); // { title, amount } from receipt scan
   const isDesktop = useIsDesktop();
 
   function handleSwitchGroup(newGroupId) {
@@ -1642,15 +1708,20 @@ export default function SplitBillsUI({ currentUser, groupId, onSignOut, onGroupC
     setScreen("home");
   }
 
+  function handleReceiptResult(data) {
+    setReceiptPrefill({ title: data.title, amount: data.amount });
+    setScreen("addExpense");
+  }
+
   const screenMap = {
     onboard: <OnboardScreen onStart={() => setScreen("home")} />,
-    home: <HomeScreen groupId={groupId} currentUser={currentUser} onAddExpense={() => setScreen("addExpense")} onExport={() => setScreen("export")} />,
+    home: <HomeScreen groupId={groupId} currentUser={currentUser} onAddExpense={() => { setReceiptPrefill(null); setScreen("addExpense"); }} onExport={() => setScreen("export")} />,
     history: <GroupsScreen currentUser={currentUser} activeGroupId={groupId} onSwitchGroup={handleSwitchGroup} />,
     split: <GroupsScreen currentUser={currentUser} activeGroupId={groupId} onSwitchGroup={handleSwitchGroup} />,
     report: <ReportScreen />,
     profile: <ProfileScreen currentUser={currentUser} onSignOut={onSignOut} />,
-    addExpense: <AddExpenseScreen groupId={groupId} onBack={() => setScreen("home")} onScanReceipt={() => setScreen("receipt")} onSuccess={() => setScreen("home")} />,
-    receipt: <ReceiptUploadScreen onBack={() => setScreen("addExpense")} onConfirm={() => setScreen("home")} />,
+    addExpense: <AddExpenseScreen groupId={groupId} onBack={() => setScreen("home")} onScanReceipt={() => setScreen("receipt")} onSuccess={() => { setReceiptPrefill(null); setScreen("home"); }} prefill={receiptPrefill} />,
+    receipt: <ReceiptUploadScreen onBack={() => setScreen("addExpense")} onUseResult={handleReceiptResult} />,
     export: <ExportShareScreen onBack={() => setScreen("home")} />,
   };
 

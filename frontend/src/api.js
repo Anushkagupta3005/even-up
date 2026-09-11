@@ -77,6 +77,26 @@ export const api = {
   getBalances: (groupId) => request(`/groups/${groupId}/balances`, { auth: false }),
   getChartData: (groupId) => request(`/groups/${groupId}/chart-data`, { auth: false }),
   getSettlements: (groupId) => request(`/groups/${groupId}/settlements`, { auth: false }),
+
+  // receipts (file upload — can't use the shared request() helper since it's FormData, not JSON)
+  parseReceipt: async (imageFile) => {
+    const formData = new FormData();
+    formData.append('receipt', imageFile);
+    const token = getToken();
+    const res = await fetch(`${API_BASE}/receipts/parse`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const error = new Error(data.error || `Request failed: ${res.status}`);
+      error.status = res.status;
+      error.data = data;
+      throw error;
+    }
+    return data;
+  },
 };
 
 export { getToken, setToken, getStoredUser, setStoredUser, SOCKET_URL };
