@@ -33,12 +33,7 @@ const payments = [
   { name: "Kristin Watson", initial: "K", bg: "#8B90A0", pct: 20, status: "Unpaid", amount: "$20.00", ok: false },
 ];
 
-const splitMembers = [
-  { name: "You", initial: "Y", bg: "#4A9FF5", pct: 24, amount: 23 },
-  { name: "Ben S", initial: "B", bg: LIME, pct: 20, amount: 23 },
-  { name: "Guy D", initial: "G", bg: TEAL, pct: 20, amount: 23 },
-  { name: "kristin", initial: "K", bg: "#E8A63C", pct: 20, amount: 23 },
-];
+
 
 function Avatar({ initial, bg, size = 34 }) {
   return (
@@ -65,7 +60,7 @@ function Avatar({ initial, bg, size = 34 }) {
 function NavBar({ screen, setScreen }) {
   const items = [
     { id: "home", label: "Home", icon: "M4 11l8-7 8 7v9a1 1 0 01-1 1h-4v-6H9v6H5a1 1 0 01-1-1z" },
-    { id: "history", label: "History", icon: "M4 6h16M4 12h16M4 18h10" },
+    { id: "history", label: "Groups", icon: "M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-4a4 4 0 10-4-4 4 4 0 004 4zm6 0a4 4 0 10-4-4" },
   ];
   return (
     <div
@@ -572,76 +567,314 @@ function QRPattern({ size = 200 }) {
   );
 }
 
-function SplitScreen() {
+function GroupsScreen({ currentUser, activeGroupId, onSwitchGroup }) {
+  const [groups, setGroups] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState("");
+
+  // create-group form
+  const [showCreate, setShowCreate] = React.useState(false);
+  const [newName, setNewName] = React.useState("");
+  const [creating, setCreating] = React.useState(false);
+
+  // expanded group (show members + invite)
+  const [expandedId, setExpandedId] = React.useState(null);
+  const [members, setMembers] = React.useState([]);
+  const [loadingMembers, setLoadingMembers] = React.useState(false);
+
+  // invite form
+  const [inviteEmail, setInviteEmail] = React.useState("");
+  const [inviteName, setInviteName] = React.useState("");
+  const [inviting, setInviting] = React.useState(false);
+  const [inviteMsg, setInviteMsg] = React.useState("");
+
+  async function loadGroups() {
+    try {
+      setLoading(true);
+      const data = await api.myGroups();
+      setGroups(data);
+    } catch (err) {
+      setError(friendlyError(err, "Failed to load groups"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  React.useEffect(() => { loadGroups(); }, []);
+
+  async function handleCreate(e) {
+    e.preventDefault();
+    if (!newName.trim()) return;
+    setCreating(true);
+    setError("");
+    try {
+      const group = await api.createGroup(newName.trim(), "INR");
+      setNewName("");
+      setShowCreate(false);
+      await loadGroups();
+      onSwitchGroup(group.id);
+    } catch (err) {
+      setError(friendlyError(err, "Failed to create group"));
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function handleExpand(groupId) {
+    if (expandedId === groupId) { setExpandedId(null); return; }
+    setExpandedId(groupId);
+    setMembers([]);
+    setInviteMsg("");
+    setInviteEmail("");
+    setInviteName("");
+    setLoadingMembers(true);
+    try {
+      const data = await api.getGroup(groupId);
+      setMembers(data.members || []);
+    } catch (err) {
+      setMembers([]);
+    } finally {
+      setLoadingMembers(false);
+    }
+  }
+
+  async function handleInvite(e, groupId) {
+    e.preventDefault();
+    if (!inviteEmail.trim()) return;
+    setInviting(true);
+    setInviteMsg("");
+    try {
+      const result = await api.addMember(groupId, {
+        email: inviteEmail.trim(),
+        name: inviteName.trim() || inviteEmail.trim().split("@")[0],
+      });
+      setMembers(result.members || []);
+      setInviteEmail("");
+      setInviteName("");
+      setInviteMsg("Member added!");
+      loadGroups(); // refresh member_count
+    } catch (err) {
+      setInviteMsg(friendlyError(err, "Failed to add member"));
+    } finally {
+      setInviting(false);
+    }
+  }
+
+  async function handleLeave(groupId) {
+    if (!confirm("Leave this group? You can be re-invited later.")) return;
+    try {
+      await api.leaveGroup(groupId);
+      if (activeGroupId === groupId) {
+        // switch to another group
+        const remaining = groups.filter((g) => g.id !== groupId);
+        onSwitchGroup(remaining.length > 0 ? remaining[0].id : null);
+      }
+      setExpandedId(null);
+      loadGroups();
+    } catch (err) {
+      setError(friendlyError(err, "Failed to leave group"));
+    }
+  }
+
+  const MEMBER_COLORS = [TEAL, BLUE, "#E8A63C", "#B9A6F0", "#3ADDC4", LIME];
+
   return (
     <div style={{ padding: "18px 18px 8px" }}>
-      <div style={{ fontSize: 18, fontWeight: 700, color: WHITE, marginBottom: 18, textAlign: "center" }}>Split bills</div>
-
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
-        <div style={{ background: WHITE, borderRadius: 16, padding: 12 }}>
-          <QRPattern size={188} />
-        </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+        <div style={{ fontSize: 18, fontWeight: 700, color: WHITE }}>Groups</div>
+        <button
+          onClick={() => setShowCreate(!showCreate)}
+          style={{
+            background: LIME, color: NAVY, border: "none", borderRadius: 10,
+            padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer",
+            display: "flex", alignItems: "center", gap: 5,
+          }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={NAVY} strokeWidth="2.5">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          New group
+        </button>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
-        <div style={{ background: LIME, borderRadius: 999, padding: "12px 28px", textAlign: "center" }}>
-          <div style={{ fontSize: 20, fontWeight: 700, color: NAVY }}>$565.98</div>
-          <div style={{ fontSize: 10.5, color: "#3A3A10", fontWeight: 600 }}>Total amount</div>
-        </div>
-      </div>
-
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-        <span style={{ fontSize: 14, fontWeight: 700, color: WHITE }}>Split members</span>
-        <span style={{ fontSize: 11.5, color: LIME, fontWeight: 600 }}>+ Add new</span>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 8, marginBottom: 22 }}>
-        {splitMembers.map((m) => (
-          <div key={m.name} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
-            <div style={{ position: "relative" }}>
-              <Avatar initial={m.initial} bg={m.bg} size={44} />
-              <div
-                style={{
-                  position: "absolute",
-                  top: -3,
-                  right: -3,
-                  width: 15,
-                  height: 15,
-                  borderRadius: "50%",
-                  background: RED,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 9,
-                  color: WHITE,
-                }}
-              >
-                &times;
-              </div>
-            </div>
-            <div style={{ fontSize: 10.5, fontWeight: 600, color: WHITE, textAlign: "center" }}>{m.name}</div>
-            <div style={{ fontSize: 9.5, color: TEAL, textAlign: "center" }}>
-              {m.pct}% (${m.amount})
-            </div>
+      {/* Create group form */}
+      {showCreate && (
+        <form onSubmit={handleCreate} style={{
+          background: CARD_NAVY, borderRadius: 14, padding: 16, marginBottom: 14,
+          display: "flex", gap: 8, alignItems: "flex-end",
+        }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>Group name</div>
+            <input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="e.g. Goa Trip, Flat 3B..."
+              autoFocus
+              style={{
+                width: "100%", background: ROW_NAVY, border: "none", borderRadius: 8,
+                padding: "10px 12px", color: WHITE, fontSize: 13, outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
           </div>
-        ))}
-      </div>
+          <button type="submit" disabled={creating || !newName.trim()} style={{
+            background: LIME, color: NAVY, border: "none", borderRadius: 8,
+            padding: "10px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer",
+            opacity: creating || !newName.trim() ? 0.5 : 1,
+          }}>
+            {creating ? "..." : "Create"}
+          </button>
+        </form>
+      )}
 
-      <button
-        style={{
-          width: "100%",
-          background: LIME,
-          color: NAVY,
-          border: "none",
-          borderRadius: 14,
-          padding: "14px 0",
-          fontSize: 14,
-          fontWeight: 700,
-          cursor: "pointer",
-        }}
-      >
-        Send request
-      </button>
+      {error && (
+        <div style={{ color: RED, fontSize: 12, marginBottom: 10, textAlign: "center" }}>{error}</div>
+      )}
+
+      {loading ? (
+        <div style={{ color: MUTED, fontSize: 13, textAlign: "center", padding: 20 }}>Loading groups...</div>
+      ) : groups.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "30px 10px" }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>👥</div>
+          <div style={{ color: WHITE, fontSize: 14, fontWeight: 600, marginBottom: 4 }}>No groups yet</div>
+          <div style={{ color: MUTED, fontSize: 12 }}>Create a group to start splitting expenses with friends</div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {groups.map((g) => {
+            const isActive = g.id === activeGroupId;
+            const isExpanded = g.id === expandedId;
+            return (
+              <div key={g.id} style={{
+                background: CARD_NAVY, borderRadius: 14, overflow: "hidden",
+                border: isActive ? `1.5px solid ${LIME}` : `1.5px solid transparent`,
+              }}>
+                {/* Group header row */}
+                <div
+                  onClick={() => handleExpand(g.id)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 12, padding: "14px 16px",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div style={{
+                    width: 38, height: 38, borderRadius: 12,
+                    background: isActive ? LIME : ROW_NAVY,
+                    color: isActive ? NAVY : MUTED,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 16, fontWeight: 700, flexShrink: 0,
+                  }}>
+                    {g.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: WHITE, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {g.name}
+                    </div>
+                    <div style={{ fontSize: 11, color: MUTED }}>
+                      {g.member_count || 1} member{(g.member_count || 1) !== 1 ? "s" : ""}
+                      {isActive && <span style={{ color: LIME, marginLeft: 8 }}>● Active</span>}
+                    </div>
+                  </div>
+                  <svg
+                    width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke={MUTED} strokeWidth="2"
+                    style={{ transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.15s" }}
+                  >
+                    <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+
+                {/* Expanded details */}
+                {isExpanded && (
+                  <div style={{ padding: "0 16px 14px", borderTop: `1px solid ${ROW_NAVY}` }}>
+                    {/* Switch / Leave buttons */}
+                    <div style={{ display: "flex", gap: 8, marginTop: 12, marginBottom: 14 }}>
+                      {!isActive && (
+                        <button
+                          onClick={() => onSwitchGroup(g.id)}
+                          style={{
+                            flex: 1, background: LIME, color: NAVY, border: "none", borderRadius: 8,
+                            padding: "9px 0", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                          }}
+                        >
+                          Switch to this group
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleLeave(g.id)}
+                        style={{
+                          flex: isActive ? 1 : 0, minWidth: isActive ? undefined : 80,
+                          background: "transparent", color: RED, border: `1px solid ${RED}`, borderRadius: 8,
+                          padding: "9px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer",
+                        }}
+                      >
+                        Leave
+                      </button>
+                    </div>
+
+                    {/* Members list */}
+                    <div style={{ fontSize: 12, fontWeight: 600, color: MUTED, marginBottom: 8 }}>Members</div>
+                    {loadingMembers ? (
+                      <div style={{ color: MUTED, fontSize: 12, padding: "6px 0" }}>Loading...</div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 14 }}>
+                        {members.map((m, i) => (
+                          <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 0" }}>
+                            <Avatar initial={m.name.charAt(0).toUpperCase()} bg={MEMBER_COLORS[i % MEMBER_COLORS.length]} size={28} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 13, color: WHITE, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {m.name}{m.id === currentUser.id ? " (you)" : ""}
+                              </div>
+                              <div style={{ fontSize: 10.5, color: MUTED }}>{m.email}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Invite form */}
+                    <div style={{ fontSize: 12, fontWeight: 600, color: MUTED, marginBottom: 6 }}>Invite member</div>
+                    <form onSubmit={(e) => handleInvite(e, g.id)} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <input
+                        value={inviteEmail}
+                        onChange={(e) => setInviteEmail(e.target.value)}
+                        placeholder="Email address"
+                        type="email"
+                        style={{
+                          width: "100%", background: ROW_NAVY, border: "none", borderRadius: 8,
+                          padding: "9px 12px", color: WHITE, fontSize: 12, outline: "none",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <input
+                          value={inviteName}
+                          onChange={(e) => setInviteName(e.target.value)}
+                          placeholder="Name (optional)"
+                          style={{
+                            flex: 1, background: ROW_NAVY, border: "none", borderRadius: 8,
+                            padding: "9px 12px", color: WHITE, fontSize: 12, outline: "none",
+                          }}
+                        />
+                        <button type="submit" disabled={inviting || !inviteEmail.trim()} style={{
+                          background: TEAL, color: NAVY, border: "none", borderRadius: 8,
+                          padding: "9px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                          opacity: inviting || !inviteEmail.trim() ? 0.5 : 1,
+                        }}>
+                          {inviting ? "..." : "Invite"}
+                        </button>
+                      </div>
+                      {inviteMsg && (
+                        <div style={{ fontSize: 11, color: inviteMsg.includes("added") ? TEAL : RED, marginTop: 2 }}>{inviteMsg}</div>
+                      )}
+                    </form>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -690,8 +923,12 @@ function ReportScreen() {
 }
 
 function ProfileScreen({ currentUser, onSignOut }) {
+  const [groupCount, setGroupCount] = React.useState("-");
+  React.useEffect(() => {
+    api.myGroups().then((g) => setGroupCount(String(g.length))).catch(() => {});
+  }, []);
   const rows = [
-    { label: "Groups joined", value: "-" },
+    { label: "Groups joined", value: groupCount },
     { label: "Total settled", value: "-" },
     { label: "Pending approvals", value: "-" },
   ];
@@ -1303,7 +1540,7 @@ function useIsDesktop() {
   return isDesktop;
 }
 
-function Sidebar({ screen, setScreen }) {
+function Sidebar({ screen, setScreen, currentUser }) {
   const items = [
     { id: "home", label: "Home", icon: "M4 11l8-7 8 7v9a1 1 0 01-1 1h-4v-6H9v6H5a1 1 0 01-1-1z" },
     { id: "history", label: "Groups", icon: "M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-4a4 4 0 10-4-4 4 4 0 004 4zm6 0a4 4 0 10-4-4" },
@@ -1383,26 +1620,33 @@ function Sidebar({ screen, setScreen }) {
         Add expense
       </button>
 
-      <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: 8, padding: "10px 8px", borderTop: `1px solid ${ROW_NAVY}` }}>
-        <Avatar initial="A" bg="#E8A63C" size={30} />
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: WHITE }}>Anushka</div>
-          <div style={{ fontSize: 10.5, color: MUTED }}>Goa Trip &middot; 4 members</div>
+      {currentUser && (
+        <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: 8, padding: "10px 8px", borderTop: `1px solid ${ROW_NAVY}` }}>
+          <Avatar initial={currentUser.name ? currentUser.name.charAt(0).toUpperCase() : "?"} bg="#E8A63C" size={30} />
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: WHITE }}>{currentUser.name}</div>
+            <div style={{ fontSize: 10.5, color: MUTED }}>{currentUser.email}</div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
 
-export default function SplitBillsUI({ currentUser, groupId, onSignOut }) {
+export default function SplitBillsUI({ currentUser, groupId, onSignOut, onGroupChange }) {
   const [screen, setScreen] = useState("onboard");
   const isDesktop = useIsDesktop();
+
+  function handleSwitchGroup(newGroupId) {
+    if (onGroupChange) onGroupChange(newGroupId);
+    setScreen("home");
+  }
 
   const screenMap = {
     onboard: <OnboardScreen onStart={() => setScreen("home")} />,
     home: <HomeScreen groupId={groupId} currentUser={currentUser} onAddExpense={() => setScreen("addExpense")} onExport={() => setScreen("export")} />,
-    history: <SplitScreen />,
-    split: <SplitScreen />,
+    history: <GroupsScreen currentUser={currentUser} activeGroupId={groupId} onSwitchGroup={handleSwitchGroup} />,
+    split: <GroupsScreen currentUser={currentUser} activeGroupId={groupId} onSwitchGroup={handleSwitchGroup} />,
     report: <ReportScreen />,
     profile: <ProfileScreen currentUser={currentUser} onSignOut={onSignOut} />,
     addExpense: <AddExpenseScreen groupId={groupId} onBack={() => setScreen("home")} onScanReceipt={() => setScreen("receipt")} onSuccess={() => setScreen("home")} />,
@@ -1423,7 +1667,7 @@ export default function SplitBillsUI({ currentUser, groupId, onSignOut }) {
           display: "flex",
         }}
       >
-        <Sidebar screen={screen} setScreen={setScreen} />
+        <Sidebar screen={screen} setScreen={setScreen} currentUser={currentUser} />
         <div style={{ flex: 1, overflowY: "auto", display: "flex", justifyContent: "center", padding: "8px 0" }}>
           <div style={{ width: "100%", maxWidth: 640 }}>{screenMap[screen]}</div>
         </div>

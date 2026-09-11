@@ -4,8 +4,8 @@ const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
-// POST /api/groups — create a group
-router.post('/', (req, res) => {
+// POST /api/groups — create a group (auth required; creator auto-added as member)
+router.post('/', requireAuth, (req, res) => {
   const { name, base_currency } = req.body;
   if (!name || typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ error: 'name is required' });
@@ -15,6 +15,11 @@ router.post('/', (req, res) => {
     'INSERT INTO groups (name, base_currency) VALUES (?, ?)'
   );
   const info = stmt.run(name.trim(), base_currency || 'INR');
+
+  // Auto-add the creator as the first member
+  db.prepare(
+    'INSERT INTO group_members (group_id, user_id) VALUES (?, ?)'
+  ).run(info.lastInsertRowid, req.user.id);
 
   const group = db
     .prepare('SELECT * FROM groups WHERE id = ?')
@@ -29,11 +34,12 @@ router.get('/', (_req, res) => {
   res.json(groups);
 });
 
-// GET /api/groups/mine — list groups the logged-in user belongs to
+// GET /api/groups/mine — list groups the logged-in user belongs to (with member count)
 router.get('/mine', requireAuth, (req, res) => {
   const groups = db
     .prepare(
-      `SELECT g.*
+      `SELECT g.*,
+              (SELECT COUNT(*) FROM group_members gm2 WHERE gm2.group_id = g.id) AS member_count
        FROM groups g
        JOIN group_members gm ON gm.group_id = g.id
        WHERE gm.user_id = ?
@@ -111,8 +117,36 @@ router.post('/:id/members', requireAuth, (req, res) => {
     )
     .all(req.params.id);
 
+  // Broadcast to the group room so other members see the new member live
+  const io = req.app.get('io');
+  if (io) io.to(`group:${req.params.id}`).emit('group_updated', { group_id: Number(req.params.id) });
+
   res.status(201).json({ group_id: Number(req.params.id), members });
 });
+
+// DELETE /api/groups/:id/members — leave a group (removes the logged-in user)
+router.delete('/:id/members', requireAuth, (req, res) => {
+  const group = db.prepare('SELECT * FROM groups WHERE id = ?').get(req.params.id);
+  if (!group) return res.status(404).json({ error: 'group not found' });
+
+  const membership = db
+    .prepare('SELECT * FROM group_members WHERE group_id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id);
+
+  if (!membership) {
+    return res.status(404).json({ error: 'you are not a member of this group' });
+  }
+
+  db.prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?')
+    .run(req.params.id, req.user.id);
+
+  // Broadcast so other members see the change live
+  const io = req.app.get('io');
+  if (io) io.to(`group:${req.params.id}`).emit('group_updated', { group_id: Number(req.params.id) });
+
+  res.json({ message: 'left group', group_id: Number(req.params.id) });
+});
+
 // PATCH /api/groups/:id/approval-mode — toggle approval-mode on/off for a group
 // body: { approval_mode: true | false }
 router.patch('/:id/approval-mode', requireAuth, (req, res) => {

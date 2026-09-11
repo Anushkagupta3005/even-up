@@ -3,9 +3,19 @@ import SplitBillsUI from './SplitBillsUI';
 import AuthScreen from './AuthScreen';
 import { api, getToken, getStoredUser, setToken, setStoredUser } from './api';
 
+function getStoredGroupId() {
+  const raw = localStorage.getItem('evenup_active_group');
+  return raw ? Number(raw) : null;
+}
+
+function setStoredGroupId(id) {
+  if (id != null) localStorage.setItem('evenup_active_group', String(id));
+  else localStorage.removeItem('evenup_active_group');
+}
+
 function App() {
   const [user, setUser] = useState(() => getStoredUser());
-  const [groupId, setGroupId] = useState(null);
+  const [groupId, setGroupId] = useState(() => getStoredGroupId());
   const [loadingGroup, setLoadingGroup] = useState(false);
   const [groupError, setGroupError] = useState('');
 
@@ -27,13 +37,17 @@ function App() {
         const groups = await api.myGroups();
         if (cancelled) return;
 
-        if (groups.length > 0) {
-          setGroupId(groups[0].id);
+        const stored = getStoredGroupId();
+        // If we have a stored groupId and the user is still a member of it, use it
+        if (stored && groups.some((g) => g.id === stored)) {
+          setGroupId(stored);
+        } else if (groups.length > 0) {
+          handleGroupChange(groups[0].id);
         } else {
+          // Auto-create a default group for brand-new users
           const newGroup = await api.createGroup(`${user.name}'s Group`, 'INR');
-          await api.addMember(newGroup.id, { user_id: user.id });
           if (cancelled) return;
-          setGroupId(newGroup.id);
+          handleGroupChange(newGroup.id);
         }
       } catch (err) {
         if (!cancelled) setGroupError(err.message || 'Failed to load group');
@@ -46,6 +60,11 @@ function App() {
     return () => { cancelled = true; };
   }, [user]);
 
+  function handleGroupChange(newGroupId) {
+    setGroupId(newGroupId);
+    setStoredGroupId(newGroupId);
+  }
+
   function handleAuthenticated(loggedInUser) {
     setUser(loggedInUser);
   }
@@ -53,6 +72,7 @@ function App() {
   function handleSignOut() {
     setToken(null);
     setStoredUser(null);
+    setStoredGroupId(null);
     setUser(null);
     setGroupId(null);
   }
@@ -84,7 +104,14 @@ function App() {
     );
   }
 
-  return <SplitBillsUI currentUser={user} groupId={groupId} onSignOut={handleSignOut} />;
+  return (
+    <SplitBillsUI
+      currentUser={user}
+      groupId={groupId}
+      onSignOut={handleSignOut}
+      onGroupChange={handleGroupChange}
+    />
+  );
 }
 
 export default App;

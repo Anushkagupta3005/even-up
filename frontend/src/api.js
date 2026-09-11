@@ -55,12 +55,14 @@ export const api = {
 
   // groups
   createGroup: (name, base_currency) =>
-    request('/groups', { method: 'POST', body: { name, base_currency }, auth: false }),
+    request('/groups', { method: 'POST', body: { name, base_currency } }),
   listGroups: () => request('/groups', { auth: false }),
   myGroups: () => request('/groups/mine'),
   getGroup: (groupId) => request(`/groups/${groupId}`, { auth: false }),
   addMember: (groupId, payload) =>
     request(`/groups/${groupId}/members`, { method: 'POST', body: payload }),
+  leaveGroup: (groupId) =>
+    request(`/groups/${groupId}/members`, { method: 'DELETE' }),
   setApprovalMode: (groupId, approval_mode) =>
     request(`/groups/${groupId}/approval-mode`, { method: 'PATCH', body: { approval_mode } }),
 
