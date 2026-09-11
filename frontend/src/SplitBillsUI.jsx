@@ -1552,7 +1552,43 @@ function ReceiptUploadScreen({ onBack, onUseResult }) {
   );
 }
 
-function ExportShareScreen({ onBack }) {
+function ExportShareScreen({ groupId, currentUser, onBack }) {
+  const [settlements, setSettlements] = React.useState([]);
+  const [group, setGroup] = React.useState(null);
+  const [chartData, setChartData] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    if (!groupId) return;
+    Promise.all([
+      api.getSettlements(groupId),
+      api.getGroup(groupId),
+      api.getChartData(groupId),
+    ]).then(([s, g, c]) => {
+      setSettlements(s.settlements || []);
+      setGroup(g);
+      setChartData(c);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [groupId]);
+
+  const totalSpend = chartData?.total_group_spend || 0;
+  const memberCount = chartData?.net_balances?.length || 0;
+  const expenseCount = chartData?.spending_by_person?.reduce((sum, p) => sum + (p.paid > 0 ? 1 : 0), 0) || 0;
+
+  function handleShare() {
+    if (!navigator.share) return;
+    const lines = settlements.map((s) => `${s.from_name} → ${s.to_name}: ₹${s.amount}`);
+    const text = `${group?.name || "Group"} — Settlement Summary\nTotal: ₹${totalSpend}\n\n${lines.join("\n")}`;
+    navigator.share({ title: `${group?.name} Settlement`, text }).catch(() => {});
+  }
+
+  function handleCopy() {
+    const lines = settlements.map((s) => `${s.from_name} → ${s.to_name}: ₹${s.amount}`);
+    const text = `${group?.name || "Group"} — Settlement Summary\nTotal: ₹${totalSpend}\n\n${lines.join("\n")}`;
+    navigator.clipboard.writeText(text).catch(() => {});
+  }
+
   return (
     <div style={{ padding: "18px 18px 8px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
@@ -1564,72 +1600,65 @@ function ExportShareScreen({ onBack }) {
         <span style={{ fontSize: 15, fontWeight: 700, color: WHITE }}>Settlement summary</span>
       </div>
 
-      <div style={{ background: LIME, borderRadius: 16, padding: 18, marginBottom: 18 }}>
-        <div style={{ fontSize: 11, color: "#3A3A10", fontWeight: 600, marginBottom: 2 }}>Goa Trip</div>
-        <div style={{ fontSize: 24, fontWeight: 700, color: NAVY, marginBottom: 12 }}>&#8377;8,920 total</div>
-        <div style={{ borderTop: "1px solid rgba(0,0,0,0.15)", paddingTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#3A3A10" }}>
-            <span>Karan &rarr; You</span>
-            <b>&#8377;1,180</b>
+      {loading ? (
+        <div style={{ color: MUTED, fontSize: 13, textAlign: "center", padding: 40 }}>Loading...</div>
+      ) : (
+        <>
+          <div style={{ background: LIME, borderRadius: 16, padding: 18, marginBottom: 18 }}>
+            <div style={{ fontSize: 11, color: "#3A3A10", fontWeight: 600, marginBottom: 2 }}>{group?.name || "Group"}</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: NAVY, marginBottom: 12 }}>&#8377;{totalSpend} total</div>
+            {settlements.length > 0 ? (
+              <div style={{ borderTop: "1px solid rgba(0,0,0,0.15)", paddingTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                {settlements.map((s, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#3A3A10" }}>
+                    <span>{s.from_name} &rarr; {s.to_name}</span>
+                    <b>&#8377;{s.amount}</b>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, color: "#3A3A10" }}>All settled up!</div>
+            )}
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#3A3A10" }}>
-            <span>You &rarr; Riya</span>
-            <b>&#8377;560</b>
+
+          <div style={{ fontSize: 11.5, color: MUTED, marginBottom: 18, textAlign: "center" }}>
+            {memberCount} member{memberCount !== 1 ? "s" : ""} &middot; {settlements.length} payment{settlements.length !== 1 ? "s" : ""} needed
           </div>
-        </div>
-      </div>
 
-      <div style={{ fontSize: 11.5, color: MUTED, marginBottom: 18, textAlign: "center" }}>
-        4 members &middot; 12 expenses &middot; settled on request
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        <button
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 6,
-            background: CARD_NAVY,
-            color: WHITE,
-            border: `1px solid ${ROW_NAVY}`,
-            borderRadius: 12,
-            padding: "12px 0",
-            fontSize: 12.5,
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={WHITE} strokeWidth="1.8">
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
-          </svg>
-          Download PDF
-        </button>
-        <button
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 6,
-            background: LIME,
-            color: NAVY,
-            border: "none",
-            borderRadius: 12,
-            padding: "12px 0",
-            fontSize: 12.5,
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={NAVY} strokeWidth="1.8">
-            <circle cx="18" cy="5" r="3" />
-            <circle cx="6" cy="12" r="3" />
-            <circle cx="18" cy="19" r="3" />
-            <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
-          </svg>
-          Share
-        </button>
-      </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <button
+              onClick={handleCopy}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                background: CARD_NAVY, color: WHITE, border: `1px solid ${ROW_NAVY}`,
+                borderRadius: 12, padding: "12px 0", fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+              }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={WHITE} strokeWidth="1.8">
+                <rect x="9" y="9" width="13" height="13" rx="2" />
+                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+              </svg>
+              Copy
+            </button>
+            <button
+              onClick={handleShare}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                background: LIME, color: NAVY, border: "none",
+                borderRadius: 12, padding: "12px 0", fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+              }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={NAVY} strokeWidth="1.8">
+                <circle cx="18" cy="5" r="3" />
+                <circle cx="6" cy="12" r="3" />
+                <circle cx="18" cy="19" r="3" />
+                <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
+              </svg>
+              Share
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1763,7 +1792,7 @@ export default function SplitBillsUI({ currentUser, groupId, onSignOut, onGroupC
     profile: <ProfileScreen currentUser={currentUser} onSignOut={onSignOut} />,
     addExpense: <AddExpenseScreen groupId={groupId} onBack={() => setScreen("home")} onScanReceipt={() => setScreen("receipt")} onSuccess={() => { setReceiptPrefill(null); setScreen("home"); }} prefill={receiptPrefill} />,
     receipt: <ReceiptUploadScreen onBack={() => setScreen("addExpense")} onUseResult={handleReceiptResult} />,
-    export: <ExportShareScreen onBack={() => setScreen("home")} />,
+    export: <ExportShareScreen groupId={groupId} currentUser={currentUser} onBack={() => setScreen("home")} />,
   };
 
   if (isDesktop && screen !== "onboard") {
