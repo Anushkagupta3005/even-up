@@ -9,6 +9,7 @@ const settlementsRouter = require('./routes/settlements');
 const chartRouter = require('./routes/chart');
 const reportRouter = require('./routes/report');
 const receiptsRouter = require('./routes/receipts');
+const profileRouter = require('./routes/profile');
 
 const app = express();
 app.use(cors());
@@ -24,6 +25,7 @@ app.use('/api/groups', chartRouter);
 app.use('/api/groups', reportRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/receipts', receiptsRouter);
+app.use('/api/profile', profileRouter);
 
 // 404 fallback
 app.use((_req, res) => res.status(404).json({ error: 'not found' }));

@@ -1160,22 +1160,43 @@ function ReportScreen({ groupId, currentUser }) {
 }
 
 function ProfileScreen({ currentUser, onSignOut }) {
-  const [groupCount, setGroupCount] = React.useState("-");
+  const [stats, setStats] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+
   React.useEffect(() => {
-    api.myGroups().then((g) => setGroupCount(String(g.length))).catch(() => {});
+    let cancelled = false;
+    api.getProfileStats().then((data) => {
+      if (!cancelled) { setStats(data); setLoading(false); }
+    }).catch(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
   }, []);
+
+  const memberSince = stats?.member_since
+    ? new Date(stats.member_since + "Z").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+    : "-";
+
   const rows = [
-    { label: "Groups joined", value: groupCount },
-    { label: "Total settled", value: "-" },
-    { label: "Pending approvals", value: "-" },
+    { label: "Groups joined", value: stats ? String(stats.groups_joined) : "-", icon: "👥" },
+    { label: "Total paid", value: stats ? `₹${stats.total_paid.toLocaleString("en-IN")}` : "-", icon: "💸" },
+    { label: "Expenses added", value: stats ? String(stats.expenses_added) : "-", icon: "🧾" },
+    { label: "Pending approvals", value: stats ? String(stats.pending_approvals) : "-", icon: "⏳" },
+    { label: "Active settlements", value: stats ? String(stats.total_settled) : "-", icon: "🤝" },
+    { label: "Member since", value: memberSince, icon: "📅" },
   ];
+
   return (
     <div style={{ padding: "18px 18px 8px" }}>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 20 }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 24 }}>
         <Avatar initial={(currentUser?.name || "?")[0].toUpperCase()} bg="#E8A63C" size={64} />
         <div style={{ fontSize: 16, fontWeight: 700, color: WHITE, marginTop: 10 }}>{currentUser?.name}</div>
         <div style={{ fontSize: 12, color: MUTED }}>{currentUser?.email}</div>
       </div>
+
+      {loading && (
+        <div style={{ textAlign: "center", color: MUTED, fontSize: 13, marginBottom: 16 }}>Loading stats…</div>
+      )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
         {rows.map((r) => (
@@ -1190,8 +1211,13 @@ function ProfileScreen({ currentUser, onSignOut }) {
               padding: "12px 14px",
             }}
           >
-            <span style={{ fontSize: 13, color: MUTED }}>{r.label}</span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: WHITE }}>{r.value}</span>
+            <span style={{ fontSize: 13, color: MUTED }}>
+              <span style={{ marginRight: 8 }}>{r.icon}</span>
+              {r.label}
+            </span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: r.label === "Total paid" ? LIME : WHITE }}>
+              {r.value}
+            </span>
           </div>
         ))}
       </div>
