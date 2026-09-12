@@ -311,8 +311,8 @@ function HomeScreen({ groupId, currentUser, onAddExpense, onExport }) {
             }}
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: WHITE }}>{exp.description}</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: LIME }}>&#8377;{exp.amount}</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: WHITE, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "65%" }}>{exp.description}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: LIME, flexShrink: 0 }}>&#8377;{exp.amount}</span>
             </div>
             <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>
               Paid by user {exp.paid_by}
@@ -437,8 +437,8 @@ function HomeScreen({ groupId, currentUser, onAddExpense, onExport }) {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: WHITE }}>{exp.description}</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: LIME }}>&#8377;{exp.amount}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: WHITE, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "65%" }}>{exp.description}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: LIME, flexShrink: 0 }}>&#8377;{exp.amount}</span>
               </div>
               <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>
                 Paid by user {exp.paid_by}
@@ -550,16 +550,16 @@ function HomeScreen({ groupId, currentUser, onAddExpense, onExport }) {
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, background: CARD_NAVY, borderRadius: 14, padding: "12px 14px" }}>
                 <Avatar initial={s.from_name[0].toUpperCase()} bg={RED} size={32} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: WHITE }}>{s.from_name}</span>
-                    <svg width="16" height="10" viewBox="0 0 20 10" fill="none">
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: WHITE, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "35%" }}>{s.from_name}</span>
+                    <svg width="16" height="10" viewBox="0 0 20 10" fill="none" style={{ flexShrink: 0 }}>
                       <path d="M0 5h16M13 1l4 4-4 4" stroke={LIME} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: WHITE }}>{s.to_name}</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: WHITE, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "35%" }}>{s.to_name}</span>
                   </div>
                   <div style={{ fontSize: 10.5, color: MUTED }}>{s.from_name === currentUser?.name ? "You pay" : s.to_name === currentUser?.name ? "You receive" : "Transfer"}</div>
                 </div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: LIME, fontVariantNumeric: "tabular-nums" }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: LIME, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
                   &#8377;{s.amount}
                 </div>
               </div>
@@ -702,11 +702,19 @@ function GroupsScreen({ currentUser, activeGroupId, onSwitchGroup }) {
   }
 
   async function handleLeave(groupId) {
-    if (!confirm("Leave this group? You can be re-invited later.")) return;
     try {
+      const settlementData = await api.getSettlements(groupId);
+      const debts = (settlementData.settlements || []).filter(
+        (s) => s.from_name === currentUser?.name || s.to_name === currentUser?.name
+      );
+      let msg = "Leave this group? You can be re-invited later.";
+      if (debts.length > 0) {
+        const total = debts.reduce((s, d) => s + d.amount, 0);
+        msg = `You have ₹${total.toLocaleString("en-IN")} in unsettled debts in this group. Leave anyway? The other members will lose track of this balance.`;
+      }
+      if (!confirm(msg)) return;
       await api.leaveGroup(groupId);
       if (activeGroupId === groupId) {
-        // switch to another group
         const remaining = groups.filter((g) => g.id !== groupId);
         onSwitchGroup(remaining.length > 0 ? remaining[0].id : null);
       }
@@ -920,9 +928,6 @@ function GroupsScreen({ currentUser, activeGroupId, onSwitchGroup }) {
   );
 }
 
-// ── PASTE THIS replacing the old spendByGroup array + ReportScreen function ──
-// (delete from "const spendByGroup = [" through the closing "}" of the old ReportScreen)
-
 const PERSON_COLORS = [TEAL, LIME, BLUE, "#E8A63C", "#C084FC", "#F472B6"];
 
 function MiniBarChart({ data, maxVal, color }) {
@@ -1013,7 +1018,9 @@ function ReportScreen({ groupId, currentUser }) {
     you,
   } = report;
 
-  const maxPaid = Math.max(...spending_by_person.map((p) => p.paid), 1);
+  const activeSpenders = spending_by_person.filter((p) => p.paid > 0);
+  const hiddenCount = spending_by_person.length - activeSpenders.length;
+  const maxPaid = Math.max(...activeSpenders.map((p) => p.paid), 1);
   const dailyMax = daily_spend.length > 0 ? Math.max(...daily_spend.map((d) => d.total)) : 1;
 
   return (
@@ -1047,15 +1054,15 @@ function ReportScreen({ groupId, currentUser }) {
 
       {/* ── Spending by person ── */}
       <div style={{ fontSize: 13, fontWeight: 700, color: WHITE, marginBottom: 10 }}>By person</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 18 }}>
-        {spending_by_person.map((p, i) => {
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: hiddenCount > 0 ? 6 : 18 }}>
+        {activeSpenders.map((p, i) => {
           const pct = Math.round((p.paid / maxPaid) * 100);
           const color = PERSON_COLORS[i % PERSON_COLORS.length];
           const isYou = p.user_id === currentUser?.id;
           return (
             <div key={p.user_id} style={{ background: CARD_NAVY, borderRadius: 14, padding: "12px 14px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: WHITE }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: WHITE, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "60%" }}>
                   {p.name}{isYou ? " (you)" : ""}
                 </span>
                 <span style={{ fontSize: 13, fontWeight: 700, color, fontVariantNumeric: "tabular-nums" }}>
@@ -1069,6 +1076,11 @@ function ReportScreen({ groupId, currentUser }) {
           );
         })}
       </div>
+      {hiddenCount > 0 && (
+        <div style={{ fontSize: 11, color: MUTED, marginBottom: 18, textAlign: "center" }}>
+          +{hiddenCount} member{hiddenCount !== 1 ? "s" : ""} with no spending
+        </div>
+      )}
 
       {/* ── Daily spend (last 30 days) ── */}
       {daily_spend.length > 0 && (
@@ -1117,9 +1129,9 @@ function ReportScreen({ groupId, currentUser }) {
                   alignItems: "center",
                 }}
               >
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: WHITE }}>{e.description}</div>
-                  <div style={{ fontSize: 10, color: MUTED }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: WHITE, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.description}</div>
+                  <div style={{ fontSize: 10, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {e.paid_by_name} · {new Date(e.created_at + "Z").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                   </div>
                 </div>
