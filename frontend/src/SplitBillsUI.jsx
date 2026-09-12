@@ -9,15 +9,50 @@ function friendlyError(err, fallback) {
   return (err && err.message) || fallback;
 }
 
-const NAVY = "#10131C";
-const CARD_NAVY = "#171B26";
-const ROW_NAVY = "#1D2230";
-const LIME = "#D6F23C";
-const TEAL = "#3ADDC4";
-const BLUE = "#4A9FF5";
-const RED = "#E8604F";
-const MUTED = "#8B90A0";
-const WHITE = "#F4F5F8";
+const NAVY = "var(--eu-navy)";
+const CARD_NAVY = "var(--eu-card-navy)";
+const ROW_NAVY = "var(--eu-row-navy)";
+const LIME = "var(--eu-lime)";
+const TEAL = "var(--eu-teal)";
+const BLUE = "var(--eu-blue)";
+const RED = "var(--eu-red)";
+const MUTED = "var(--eu-muted)";
+const WHITE = "var(--eu-white)";
+
+const THEME_VARS = {
+  dark: {
+    "--eu-navy": "#10131C",
+    "--eu-card-navy": "#171B26",
+    "--eu-row-navy": "#1D2230",
+    "--eu-lime": "#D6F23C",
+    "--eu-teal": "#3ADDC4",
+    "--eu-blue": "#4A9FF5",
+    "--eu-red": "#E8604F",
+    "--eu-muted": "#8B90A0",
+    "--eu-white": "#F4F5F8",
+  },
+  light: {
+    "--eu-navy": "#F4F5F8",
+    "--eu-card-navy": "#FFFFFF",
+    "--eu-row-navy": "#E9EBF0",
+    "--eu-lime": "#8AA815",
+    "--eu-teal": "#0F9C87",
+    "--eu-blue": "#2B6FCC",
+    "--eu-red": "#C6402F",
+    "--eu-muted": "#6B7080",
+    "--eu-white": "#10131C",
+  },
+};
+
+function getStoredTheme() {
+  return localStorage.getItem("evenup_theme") === "light" ? "light" : "dark";
+}
+
+function applyTheme(theme) {
+  const vars = THEME_VARS[theme] || THEME_VARS.dark;
+  const root = document.documentElement;
+  Object.keys(vars).forEach((key) => root.style.setProperty(key, vars[key]));
+}
 
 const participants = [
   { name: "Ben S", pct: 30, color: TEAL },
@@ -1159,7 +1194,7 @@ function ReportScreen({ groupId, currentUser }) {
   );
 }
 
-function ProfileScreen({ currentUser, onSignOut }) {
+function ProfileScreen({ currentUser, onSignOut, theme, onToggleTheme }) {
   const [stats, setStats] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
 
@@ -1220,6 +1255,48 @@ function ProfileScreen({ currentUser, onSignOut }) {
             </span>
           </div>
         ))}
+      </div>
+
+      <div
+        onClick={onToggleTheme}
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          background: CARD_NAVY,
+          borderRadius: 14,
+          padding: "12px 14px",
+          marginBottom: 20,
+          cursor: "pointer",
+        }}
+      >
+        <span style={{ fontSize: 13, color: MUTED }}>
+          <span style={{ marginRight: 8 }}>{theme === "dark" ? "🌙" : "☀️"}</span>
+          {theme === "dark" ? "Dark mode" : "Light mode"}
+        </span>
+        <div
+          style={{
+            width: 40,
+            height: 22,
+            borderRadius: 999,
+            background: theme === "dark" ? ROW_NAVY : LIME,
+            position: "relative",
+            transition: "background 0.2s ease",
+          }}
+        >
+          <div
+            style={{
+              width: 16,
+              height: 16,
+              borderRadius: "50%",
+              background: theme === "dark" ? MUTED : NAVY,
+              position: "absolute",
+              top: 3,
+              left: theme === "dark" ? 3 : 21,
+              transition: "left 0.2s ease",
+            }}
+          />
+        </div>
       </div>
 
       <button
@@ -1996,7 +2073,20 @@ function Sidebar({ screen, setScreen, currentUser }) {
 export default function SplitBillsUI({ currentUser, groupId, onSignOut, onGroupChange }) {
   const [screen, setScreen] = useState("onboard");
   const [receiptPrefill, setReceiptPrefill] = useState(null); // { title, amount } from receipt scan
+  const [theme, setTheme] = useState(getStoredTheme);
   const isDesktop = useIsDesktop();
+
+  React.useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
+
+  function toggleTheme() {
+    setTheme((prev) => {
+      const next = prev === "dark" ? "light" : "dark";
+      localStorage.setItem("evenup_theme", next);
+      return next;
+    });
+  }
 
   function handleSwitchGroup(newGroupId) {
     if (onGroupChange) onGroupChange(newGroupId);
@@ -2014,7 +2104,7 @@ export default function SplitBillsUI({ currentUser, groupId, onSignOut, onGroupC
     history: <GroupsScreen currentUser={currentUser} activeGroupId={groupId} onSwitchGroup={handleSwitchGroup} />,
     split: <GroupsScreen currentUser={currentUser} activeGroupId={groupId} onSwitchGroup={handleSwitchGroup} />,
     report: <ReportScreen groupId={groupId} currentUser={currentUser} />,
-    profile: <ProfileScreen currentUser={currentUser} onSignOut={onSignOut} />,
+    profile: <ProfileScreen currentUser={currentUser} onSignOut={onSignOut} theme={theme} onToggleTheme={toggleTheme} />,
     addExpense: <AddExpenseScreen groupId={groupId} onBack={() => setScreen("home")} onScanReceipt={() => setScreen("receipt")} onSuccess={() => { setReceiptPrefill(null); setScreen("home"); }} prefill={receiptPrefill} />,
     receipt: <ReceiptUploadScreen onBack={() => setScreen("addExpense")} onUseResult={handleReceiptResult} />,
     export: <ExportShareScreen groupId={groupId} currentUser={currentUser} onBack={() => setScreen("home")} />,
