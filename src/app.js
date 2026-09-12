@@ -7,6 +7,7 @@ const expensesRouter = require('./routes/expenses');
 const balancesRouter = require('./routes/balances');
 const settlementsRouter = require('./routes/settlements');
 const chartRouter = require('./routes/chart');
+const reportRouter = require('./routes/report');
 const receiptsRouter = require('./routes/receipts');
 
 const app = express();
@@ -20,6 +21,7 @@ app.use('/api/groups', expensesRouter);
 app.use('/api/groups', balancesRouter);
 app.use('/api/groups', settlementsRouter);
 app.use('/api/groups', chartRouter);
+app.use('/api/groups', reportRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/receipts', receiptsRouter);
 

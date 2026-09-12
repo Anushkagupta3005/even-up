@@ -920,45 +920,212 @@ function GroupsScreen({ currentUser, activeGroupId, onSwitchGroup }) {
   );
 }
 
-const spendByGroup = [
-  { name: "Goa Trip", amount: 8920, color: LIME },
-  { name: "Flat 3B", amount: 5340, color: TEAL },
-  { name: "Office lunch", amount: 2100, color: BLUE },
-];
+// ── PASTE THIS replacing the old spendByGroup array + ReportScreen function ──
+// (delete from "const spendByGroup = [" through the closing "}" of the old ReportScreen)
 
-function ReportScreen() {
-  const total = spendByGroup.reduce((s, g) => s + g.amount, 0);
+const PERSON_COLORS = [TEAL, LIME, BLUE, "#E8A63C", "#C084FC", "#F472B6"];
+
+function MiniBarChart({ data, maxVal, color }) {
+  if (!data || data.length === 0) return null;
+  const safeMax = maxVal || 1;
+  const barW = Math.max(2, Math.floor((100 / data.length) * 0.7));
+  const gapPct = (100 - barW * data.length) / (data.length + 1);
+  return (
+    <div style={{ display: "flex", alignItems: "flex-end", height: 60, gap: `${gapPct}%`, padding: "0 2%" }}>
+      {data.map((d, i) => (
+        <div
+          key={i}
+          title={`${d.day}: ₹${d.total}`}
+          style={{
+            flex: 1,
+            minWidth: 4,
+            maxWidth: 18,
+            height: `${Math.max(4, (d.total / safeMax) * 100)}%`,
+            background: color,
+            borderRadius: 3,
+            opacity: 0.85,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ReportScreen({ groupId, currentUser }) {
+  const [report, setReport] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  React.useEffect(() => {
+    if (!groupId) return;
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+    api
+      .getReportData(groupId)
+      .then((data) => {
+        if (!cancelled) {
+          setReport(data);
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(friendlyError(err, "Failed to load report"));
+          setLoading(false);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [groupId]);
+
+  if (loading) {
+    return (
+      <div style={{ padding: 24, textAlign: "center", color: MUTED, fontSize: 13 }}>Loading report…</div>
+    );
+  }
+  if (error) {
+    return (
+      <div style={{ padding: 24, textAlign: "center", color: RED, fontSize: 13 }}>{error}</div>
+    );
+  }
+  if (!report) return null;
+
+  const {
+    group_name,
+    total_group_spend,
+    expense_count,
+    spending_by_person,
+    daily_spend,
+    recent_expenses,
+    top_expense,
+    you,
+  } = report;
+
+  const maxPaid = Math.max(...spending_by_person.map((p) => p.paid), 1);
+  const dailyMax = daily_spend.length > 0 ? Math.max(...daily_spend.map((d) => d.total)) : 1;
+
   return (
     <div style={{ padding: "18px 18px 8px" }}>
       <div style={{ fontSize: 18, fontWeight: 700, color: WHITE, marginBottom: 4 }}>Report</div>
-      <div style={{ fontSize: 12, color: MUTED, marginBottom: 18 }}>Your spending across all groups</div>
+      <div style={{ fontSize: 12, color: MUTED, marginBottom: 18 }}>
+        Spending insights · {group_name}
+      </div>
 
-      <div style={{ background: CARD_NAVY, borderRadius: 16, padding: 16, marginBottom: 18 }}>
-        <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>Total this month</div>
-        <div style={{ fontSize: 26, fontWeight: 700, color: WHITE, fontVariantNumeric: "tabular-nums" }}>
-          ${total.toLocaleString("en-US")}
+      {/* ── Hero stats row ── */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
+        <div style={{ flex: 1, background: CARD_NAVY, borderRadius: 16, padding: 14 }}>
+          <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>Group total</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: WHITE, fontVariantNumeric: "tabular-nums" }}>
+            ₹{total_group_spend.toLocaleString("en-IN")}
+          </div>
+          <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>
+            {expense_count} expense{expense_count !== 1 ? "s" : ""}
+          </div>
+        </div>
+        <div style={{ flex: 1, background: CARD_NAVY, borderRadius: 16, padding: 14 }}>
+          <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>You paid</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: LIME, fontVariantNumeric: "tabular-nums" }}>
+            ₹{you.paid.toLocaleString("en-IN")}
+          </div>
+          <div style={{ fontSize: 11, color: you.net >= 0 ? TEAL : RED, marginTop: 4 }}>
+            {you.net >= 0 ? `Owed ₹${you.net.toLocaleString("en-IN")}` : `You owe ₹${Math.abs(you.net).toLocaleString("en-IN")}`}
+          </div>
         </div>
       </div>
 
-      <div style={{ fontSize: 13, fontWeight: 700, color: WHITE, marginBottom: 10 }}>By group</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {spendByGroup.map((g) => {
-          const pct = Math.round((g.amount / total) * 100);
+      {/* ── Spending by person ── */}
+      <div style={{ fontSize: 13, fontWeight: 700, color: WHITE, marginBottom: 10 }}>By person</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 18 }}>
+        {spending_by_person.map((p, i) => {
+          const pct = Math.round((p.paid / maxPaid) * 100);
+          const color = PERSON_COLORS[i % PERSON_COLORS.length];
+          const isYou = p.user_id === currentUser?.id;
           return (
-            <div key={g.name} style={{ background: CARD_NAVY, borderRadius: 14, padding: "12px 14px" }}>
+            <div key={p.user_id} style={{ background: CARD_NAVY, borderRadius: 14, padding: "12px 14px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: WHITE }}>{g.name}</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: g.color, fontVariantNumeric: "tabular-nums" }}>
-                  ${g.amount.toLocaleString("en-US")}
+                <span style={{ fontSize: 13, fontWeight: 600, color: WHITE }}>
+                  {p.name}{isYou ? " (you)" : ""}
+                </span>
+                <span style={{ fontSize: 13, fontWeight: 700, color, fontVariantNumeric: "tabular-nums" }}>
+                  ₹{p.paid.toLocaleString("en-IN")}
                 </span>
               </div>
               <div style={{ background: ROW_NAVY, borderRadius: 999, height: 6, overflow: "hidden" }}>
-                <div style={{ width: `${pct}%`, height: "100%", background: g.color, borderRadius: 999 }} />
+                <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 999, transition: "width 0.4s ease" }} />
               </div>
             </div>
           );
         })}
       </div>
+
+      {/* ── Daily spend (last 30 days) ── */}
+      {daily_spend.length > 0 && (
+        <>
+          <div style={{ fontSize: 13, fontWeight: 700, color: WHITE, marginBottom: 10 }}>Last 30 days</div>
+          <div style={{ background: CARD_NAVY, borderRadius: 14, padding: "14px 14px 10px", marginBottom: 18 }}>
+            <MiniBarChart data={daily_spend} maxVal={dailyMax} color={TEAL} />
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+              <span style={{ fontSize: 10, color: MUTED }}>{daily_spend[0].day.slice(5)}</span>
+              <span style={{ fontSize: 10, color: MUTED }}>{daily_spend[daily_spend.length - 1].day.slice(5)}</span>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Top expense ── */}
+      {top_expense && (
+        <>
+          <div style={{ fontSize: 13, fontWeight: 700, color: WHITE, marginBottom: 10 }}>Biggest expense</div>
+          <div style={{ background: CARD_NAVY, borderRadius: 14, padding: "12px 14px", marginBottom: 18, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: WHITE }}>{top_expense.description}</div>
+              <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>Paid by {top_expense.paid_by_name}</div>
+            </div>
+            <span style={{ fontSize: 15, fontWeight: 700, color: LIME, fontVariantNumeric: "tabular-nums" }}>
+              ₹{top_expense.amount.toLocaleString("en-IN")}
+            </span>
+          </div>
+        </>
+      )}
+
+      {/* ── Recent activity ── */}
+      {recent_expenses.length > 0 && (
+        <>
+          <div style={{ fontSize: 13, fontWeight: 700, color: WHITE, marginBottom: 10 }}>Recent activity</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 18 }}>
+            {recent_expenses.map((e) => (
+              <div
+                key={e.id}
+                style={{
+                  background: CARD_NAVY,
+                  borderRadius: 14,
+                  padding: "10px 14px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: WHITE }}>{e.description}</div>
+                  <div style={{ fontSize: 10, color: MUTED }}>
+                    {e.paid_by_name} · {new Date(e.created_at + "Z").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                  </div>
+                </div>
+                <span style={{ fontSize: 13, fontWeight: 700, color: WHITE, fontVariantNumeric: "tabular-nums" }}>
+                  ₹{e.amount.toLocaleString("en-IN")}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* ── Empty state ── */}
+      {expense_count === 0 && (
+        <div style={{ textAlign: "center", color: MUTED, fontSize: 13, padding: "30px 0" }}>
+          No approved expenses yet — add one to see your report!
+        </div>
+      )}
     </div>
   );
 }
@@ -1788,7 +1955,7 @@ export default function SplitBillsUI({ currentUser, groupId, onSignOut, onGroupC
     home: <HomeScreen groupId={groupId} currentUser={currentUser} onAddExpense={() => { setReceiptPrefill(null); setScreen("addExpense"); }} onExport={() => setScreen("export")} />,
     history: <GroupsScreen currentUser={currentUser} activeGroupId={groupId} onSwitchGroup={handleSwitchGroup} />,
     split: <GroupsScreen currentUser={currentUser} activeGroupId={groupId} onSwitchGroup={handleSwitchGroup} />,
-    report: <ReportScreen />,
+    report: <ReportScreen groupId={groupId} currentUser={currentUser} />,
     profile: <ProfileScreen currentUser={currentUser} onSignOut={onSignOut} />,
     addExpense: <AddExpenseScreen groupId={groupId} onBack={() => setScreen("home")} onScanReceipt={() => setScreen("receipt")} onSuccess={() => { setReceiptPrefill(null); setScreen("home"); }} prefill={receiptPrefill} />,
     receipt: <ReceiptUploadScreen onBack={() => setScreen("addExpense")} onUseResult={handleReceiptResult} />,

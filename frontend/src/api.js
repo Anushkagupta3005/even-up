@@ -77,6 +77,7 @@ export const api = {
   getBalances: (groupId) => request(`/groups/${groupId}/balances`, { auth: false }),
   getChartData: (groupId) => request(`/groups/${groupId}/chart-data`, { auth: false }),
   getSettlements: (groupId) => request(`/groups/${groupId}/settlements`, { auth: false }),
+  getReportData: (groupId) => request(`/groups/${groupId}/report-data`),
 
   // receipts (file upload — can't use the shared request() helper since it's FormData, not JSON)
   parseReceipt: async (imageFile) => {
