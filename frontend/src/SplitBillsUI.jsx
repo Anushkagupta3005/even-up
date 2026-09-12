@@ -961,22 +961,34 @@ function ReportScreen({ groupId, currentUser }) {
     let cancelled = false;
     setLoading(true);
     setError("");
-    api
-      .getReportData(groupId)
-      .then((data) => {
-        if (!cancelled) {
-          setReport(data);
-          setLoading(false);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setError(friendlyError(err, "Failed to load report"));
-          setLoading(false);
-        }
-      });
-    return () => { cancelled = true; };
+    function fetchReport() {
+      api
+        .getReportData(groupId)
+        .then((data) => {
+          if (!cancelled) {
+            setReport(data);
+            setLoading(false);
+          }
+        })
+        .catch((err) => {
+          if (!cancelled) {
+            setError(friendlyError(err, "Failed to load report"));
+            setLoading(false);
+          }
+        });
+    }
+
+    fetchReport();
+
+    const socket = io(SOCKET_URL);
+    socket.emit("join_group", groupId);
+    socket.on("balances_updated", () => { if (!cancelled) fetchReport(); });
+    socket.on("expense_approved", () => { if (!cancelled) fetchReport(); });
+    socket.on("expense_rejected", () => { if (!cancelled) fetchReport(); });
+
+    return () => { cancelled = true; socket.disconnect(); };
   }, [groupId]);
+   
 
   if (loading) {
     return (
