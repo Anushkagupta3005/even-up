@@ -214,7 +214,7 @@ function OnboardScreen({ onStart }) {
   );
 }
 
-function HomeScreen({ groupId, currentUser, onAddExpense, onExport }) {
+function HomeScreen({ groupId, currentUser, onAddExpense, onExport, isDesktop }) {
   const [chartData, setChartData] = React.useState(null);
   const [group, setGroup] = React.useState(null);
   const [pendingExpenses, setPendingExpenses] = React.useState([]);
@@ -417,196 +417,208 @@ function HomeScreen({ groupId, currentUser, onAddExpense, onExport }) {
         <Avatar initial={(currentUser?.name || "?")[0].toUpperCase()} bg="#E8A63C" size={36} />
       </div>
 
-      <div style={{ background: LIME, borderRadius: 18, padding: "18px", marginBottom: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-          <svg width="96" height="96" viewBox="0 0 100 100">
-            {withPct.map((p) => {
-              const len = (p.pct / 100) * circumference;
-              const dash = `${len} ${circumference - len}`;
-              const el = (
-                <circle
-                  key={p.user_id}
-                  cx="50"
-                  cy="50"
-                  r="46"
-                  fill="none"
-                  stroke={p.color === LIME ? NAVY : p.color}
-                  strokeWidth="7"
-                  strokeDasharray={dash}
-                  strokeDashoffset={-offset}
-                  transform="rotate(-90 50 50)"
-                  strokeLinecap="round"
-                />
+      <div
+        style={
+          isDesktop && pendingExpenses.length > 0
+            ? { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, alignItems: "start" }
+            : undefined
+        }
+      >
+        <div style={isDesktop && pendingExpenses.length > 0 ? { position: "sticky", top: 18, alignSelf: "start" } : undefined}>
+          <div style={{ background: LIME, borderRadius: 18, padding: "18px", marginBottom: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+              <svg width="96" height="96" viewBox="0 0 100 100">
+                {withPct.map((p) => {
+                  const len = (p.pct / 100) * circumference;
+                  const dash = `${len} ${circumference - len}`;
+                  const el = (
+                    <circle
+                      key={p.user_id}
+                      cx="50"
+                      cy="50"
+                      r="46"
+                      fill="none"
+                      stroke={p.color === LIME ? NAVY : p.color}
+                      strokeWidth="7"
+                      strokeDasharray={dash}
+                      strokeDashoffset={-offset}
+                      transform="rotate(-90 50 50)"
+                      strokeLinecap="round"
+                    />
+                  );
+                  offset += len;
+                  return el;
+                })}
+                <text x="50" y="46" textAnchor="middle" fontSize="15" fontWeight="700" fill={NAVY}>
+                  &#8377;{totalSpend}
+                </text>
+                <text x="50" y="60" textAnchor="middle" fontSize="8" fill="#5A5A20">
+                  Total bill
+                </text>
+              </svg>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: NAVY, marginBottom: 8 }}>{withPct.length} Participants</div>
+                {withPct.map((p) => (
+                  <div key={p.user_id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>
+                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: p.color === LIME ? NAVY : p.color, display: "inline-block" }} />
+                    <span style={{ fontSize: 11.5, color: "#3A3A10" }}>
+                      <b>{p.pct}%</b> {p.name}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {pendingExpenses.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: WHITE, marginBottom: 8 }}>Needs your approval</div>
+              {pendingExpenses.map((exp) => (
+                <div
+                  key={exp.id}
+                  style={{
+                    background: CARD_NAVY,
+                    border: `1px solid ${LIME}`,
+                    borderRadius: 14,
+                    padding: "12px 14px",
+                    marginBottom: 8,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: WHITE, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "65%" }}>{exp.description}</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: LIME, flexShrink: 0 }}>&#8377;{exp.amount}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>
+                    Paid by {memberName(exp.paid_by)}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: MUTED, marginBottom: 10 }}>
+                    {(() => {
+                      const total = totalMembers;
+                      const approveNeeded = Math.floor(total / 2) + 1;
+                      const rejectNeeded = total - approveNeeded + 1;
+                      return `Needs ${approveNeeded}/${total} to approve, ${rejectNeeded}/${total} to reject`;
+                    })()}
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      onClick={() => handleVote(exp.id, "approve")}
+                      disabled={voting[exp.id]}
+                      style={{
+                        flex: 1,
+                        background: LIME,
+                        color: NAVY,
+                        border: "none",
+                        borderRadius: 10,
+                        padding: "8px 0",
+                        fontSize: 12.5,
+                        fontWeight: 700,
+                        cursor: voting[exp.id] ? "default" : "pointer",
+                        opacity: voting[exp.id] ? 0.6 : 1,
+                      }}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => handleVote(exp.id, "reject")}
+                      disabled={voting[exp.id]}
+                      style={{
+                        flex: 1,
+                        background: "transparent",
+                        color: RED,
+                        border: `1px solid ${RED}`,
+                        borderRadius: 10,
+                        padding: "8px 0",
+                        fontSize: 12.5,
+                        fontWeight: 700,
+                        cursor: voting[exp.id] ? "default" : "pointer",
+                        opacity: voting[exp.id] ? 0.6 : 1,
+                      }}
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            <span style={{ fontSize: 14, fontWeight: 700, color: WHITE }}>Net balances</span>
+            <button onClick={onExport} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={LIME} strokeWidth="2">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
+              </svg>
+              <span style={{ fontSize: 11, color: LIME, fontWeight: 600 }}>Export</span>
+            </button>
+          </div>
+          <div style={{ background: ROW_NAVY, borderRadius: 999, height: 20, marginBottom: 6, position: "relative", overflow: "hidden" }}>
+            <div style={{ width: `${settledPct}%`, height: "100%", background: TEAL, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "flex-end", paddingRight: 8 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: NAVY }}>{settledPct}%</span>
+            </div>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: MUTED, marginBottom: 14 }}>
+            <span>{settled} of {totalMembers} settled</span>
+            <span>&#8377;{totalSpend} Total bill</span>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 320, overflowY: "auto" }}>
+            {chartData.net_balances.map((b) => {
+              const ok = b.net >= 0;
+              return (
+                <div key={b.user_id} style={{ display: "flex", alignItems: "center", gap: 12, background: CARD_NAVY, borderRadius: 14, padding: "10px 12px" }}>
+                  <Avatar initial={b.name[0].toUpperCase()} bg={ok ? TEAL : RED} size={34} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: WHITE }}>{b.name}</div>
+                    <div style={{ fontSize: 11, color: ok ? TEAL : RED, fontWeight: 600 }}>
+                      {ok ? "is owed" : "owes"}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: ok ? TEAL : RED, fontVariantNumeric: "tabular-nums" }}>
+                    &#8377;{Math.abs(b.net)}
+                  </div>
+                </div>
               );
-              offset += len;
-              return el;
             })}
-            <text x="50" y="46" textAnchor="middle" fontSize="15" fontWeight="700" fill={NAVY}>
-              &#8377;{totalSpend}
-            </text>
-            <text x="50" y="60" textAnchor="middle" fontSize="8" fill="#5A5A20">
-              Total bill
-            </text>
-          </svg>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: NAVY, marginBottom: 8 }}>{withPct.length} Participants</div>
-            {withPct.map((p) => (
-              <div key={p.user_id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>
-                <span style={{ width: 7, height: 7, borderRadius: "50%", background: p.color === LIME ? NAVY : p.color, display: "inline-block" }} />
-                <span style={{ fontSize: 11.5, color: "#3A3A10" }}>
-                  <b>{p.pct}%</b> {p.name}
+          </div>
+
+          {/* Settle Up — minimized transactions */}
+          {settlements.length > 0 && (
+            <div style={{ marginTop: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={LIME} strokeWidth="2">
+                  <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <span style={{ fontSize: 14, fontWeight: 700, color: WHITE }}>Settle up</span>
+                <span style={{ fontSize: 11, color: MUTED, marginLeft: "auto" }}>
+                  {settlements.length} payment{settlements.length !== 1 ? "s" : ""} needed
                 </span>
               </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {pendingExpenses.length > 0 && (
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: WHITE, marginBottom: 8 }}>Needs your approval</div>
-          {pendingExpenses.map((exp) => (
-            <div
-              key={exp.id}
-              style={{
-                background: CARD_NAVY,
-                border: `1px solid ${LIME}`,
-                borderRadius: 14,
-                padding: "12px 14px",
-                marginBottom: 8,
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: WHITE, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "65%" }}>{exp.description}</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: LIME, flexShrink: 0 }}>&#8377;{exp.amount}</span>
-              </div>
-              <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>
-                Paid by {memberName(exp.paid_by)}
-              </div>
-              <div style={{ fontSize: 10.5, color: MUTED, marginBottom: 10 }}>
-                {(() => {
-                  const total = totalMembers;
-                  const approveNeeded = Math.floor(total / 2) + 1;
-                  const rejectNeeded = total - approveNeeded + 1;
-                  return `Needs ${approveNeeded}/${total} to approve, ${rejectNeeded}/${total} to reject`;
-                })()}
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  onClick={() => handleVote(exp.id, "approve")}
-                  disabled={voting[exp.id]}
-                  style={{
-                    flex: 1,
-                    background: LIME,
-                    color: NAVY,
-                    border: "none",
-                    borderRadius: 10,
-                    padding: "8px 0",
-                    fontSize: 12.5,
-                    fontWeight: 700,
-                    cursor: voting[exp.id] ? "default" : "pointer",
-                    opacity: voting[exp.id] ? 0.6 : 1,
-                  }}
-                >
-                  Approve
-                </button>
-                <button
-                  onClick={() => handleVote(exp.id, "reject")}
-                  disabled={voting[exp.id]}
-                  style={{
-                    flex: 1,
-                    background: "transparent",
-                    color: RED,
-                    border: `1px solid ${RED}`,
-                    borderRadius: 10,
-                    padding: "8px 0",
-                    fontSize: 12.5,
-                    fontWeight: 700,
-                    cursor: voting[exp.id] ? "default" : "pointer",
-                    opacity: voting[exp.id] ? 0.6 : 1,
-                  }}
-                >
-                  Reject
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-        <span style={{ fontSize: 14, fontWeight: 700, color: WHITE }}>Net balances</span>
-        <button onClick={onExport} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={LIME} strokeWidth="2">
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
-          </svg>
-          <span style={{ fontSize: 11, color: LIME, fontWeight: 600 }}>Export</span>
-        </button>
-      </div>
-      <div style={{ background: ROW_NAVY, borderRadius: 999, height: 20, marginBottom: 6, position: "relative", overflow: "hidden" }}>
-        <div style={{ width: `${settledPct}%`, height: "100%", background: TEAL, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "flex-end", paddingRight: 8 }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: NAVY }}>{settledPct}%</span>
-        </div>
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: MUTED, marginBottom: 14 }}>
-        <span>{settled} of {totalMembers} settled</span>
-        <span>&#8377;{totalSpend} Total bill</span>
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 320, overflowY: "auto" }}>
-        {chartData.net_balances.map((b) => {
-          const ok = b.net >= 0;
-          return (
-            <div key={b.user_id} style={{ display: "flex", alignItems: "center", gap: 12, background: CARD_NAVY, borderRadius: 14, padding: "10px 12px" }}>
-              <Avatar initial={b.name[0].toUpperCase()} bg={ok ? TEAL : RED} size={34} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: WHITE }}>{b.name}</div>
-                <div style={{ fontSize: 11, color: ok ? TEAL : RED, fontWeight: 600 }}>
-                  {ok ? "is owed" : "owes"}
-                </div>
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: ok ? TEAL : RED, fontVariantNumeric: "tabular-nums" }}>
-                &#8377;{Math.abs(b.net)}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Settle Up — minimized transactions */}
-      {settlements.length > 0 && (
-        <div style={{ marginTop: 20 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={LIME} strokeWidth="2">
-              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span style={{ fontSize: 14, fontWeight: 700, color: WHITE }}>Settle up</span>
-            <span style={{ fontSize: 11, color: MUTED, marginLeft: "auto" }}>
-              {settlements.length} payment{settlements.length !== 1 ? "s" : ""} needed
-            </span>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {settlements.map((s, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, background: CARD_NAVY, borderRadius: 14, padding: "12px 14px" }}>
-                <Avatar initial={s.from_name[0].toUpperCase()} bg={RED} size={32} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: WHITE, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "35%" }}>{s.from_name}</span>
-                    <svg width="16" height="10" viewBox="0 0 20 10" fill="none" style={{ flexShrink: 0 }}>
-                      <path d="M0 5h16M13 1l4 4-4 4" stroke={LIME} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: WHITE, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "35%" }}>{s.to_name}</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {settlements.map((s, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, background: CARD_NAVY, borderRadius: 14, padding: "12px 14px" }}>
+                    <Avatar initial={s.from_name[0].toUpperCase()} bg={RED} size={32} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: WHITE, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "35%" }}>{s.from_name}</span>
+                        <svg width="16" height="10" viewBox="0 0 20 10" fill="none" style={{ flexShrink: 0 }}>
+                          <path d="M0 5h16M13 1l4 4-4 4" stroke={LIME} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: WHITE, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "35%" }}>{s.to_name}</span>
+                      </div>
+                      <div style={{ fontSize: 10.5, color: MUTED }}>{s.from_name === currentUser?.name ? "You pay" : s.to_name === currentUser?.name ? "You receive" : "Transfer"}</div>
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: LIME, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
+                      &#8377;{s.amount}
+                    </div>
                   </div>
-                  <div style={{ fontSize: 10.5, color: MUTED }}>{s.from_name === currentUser?.name ? "You pay" : s.to_name === currentUser?.name ? "You receive" : "Transfer"}</div>
-                </div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: LIME, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
-                  &#8377;{s.amount}
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -2100,7 +2112,7 @@ export default function SplitBillsUI({ currentUser, groupId, onSignOut, onGroupC
 
   const screenMap = {
     onboard: <OnboardScreen onStart={() => setScreen("home")} />,
-    home: <HomeScreen groupId={groupId} currentUser={currentUser} onAddExpense={() => { setReceiptPrefill(null); setScreen("addExpense"); }} onExport={() => setScreen("export")} />,
+    home: <HomeScreen groupId={groupId} currentUser={currentUser} onAddExpense={() => { setReceiptPrefill(null); setScreen("addExpense"); }} onExport={() => setScreen("export")} isDesktop={isDesktop} />,
     history: <GroupsScreen currentUser={currentUser} activeGroupId={groupId} onSwitchGroup={handleSwitchGroup} />,
     split: <GroupsScreen currentUser={currentUser} activeGroupId={groupId} onSwitchGroup={handleSwitchGroup} />,
     report: <ReportScreen groupId={groupId} currentUser={currentUser} />,
@@ -2125,7 +2137,7 @@ export default function SplitBillsUI({ currentUser, groupId, onSignOut, onGroupC
       >
         <Sidebar screen={screen} setScreen={setScreen} currentUser={currentUser} />
         <div style={{ flex: 1, overflowY: "auto", display: "flex", justifyContent: "center", padding: "8px 0" }}>
-          <div style={{ width: "100%", maxWidth: 640 }}>{screenMap[screen]}</div>
+          <div style={{ width: "100%", maxWidth: 900 }}>{screenMap[screen]}</div>
         </div>
       </div>
     );
