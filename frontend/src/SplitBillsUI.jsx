@@ -197,6 +197,11 @@ function HomeScreen({ groupId, currentUser, onAddExpense, onExport }) {
     }
   }
 
+  function memberName(userId) {
+    const m = group?.members?.find((m) => m.id === userId);
+    return m ? m.name : "Unknown";
+  }
+
   async function handleVote(expenseId, vote) {
     setVoting((prev) => ({ ...prev, [expenseId]: true }));
     try {
@@ -315,7 +320,7 @@ function HomeScreen({ groupId, currentUser, onAddExpense, onExport }) {
               <span style={{ fontSize: 13, fontWeight: 700, color: LIME, flexShrink: 0 }}>&#8377;{exp.amount}</span>
             </div>
             <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>
-              Paid by user {exp.paid_by}
+              Paid by {memberName(exp.paid_by)}
             </div>
             <div style={{ fontSize: 10.5, color: MUTED, marginBottom: 10 }}>
               {(() => {
@@ -441,7 +446,7 @@ function HomeScreen({ groupId, currentUser, onAddExpense, onExport }) {
                 <span style={{ fontSize: 13, fontWeight: 700, color: LIME, flexShrink: 0 }}>&#8377;{exp.amount}</span>
               </div>
               <div style={{ fontSize: 11, color: MUTED, marginBottom: 4 }}>
-                Paid by user {exp.paid_by}
+                Paid by {memberName(exp.paid_by)}
               </div>
               <div style={{ fontSize: 10.5, color: MUTED, marginBottom: 10 }}>
                 {(() => {
@@ -1252,6 +1257,9 @@ function AddExpenseScreen({ groupId, onBack, onScanReceipt, onSuccess, prefill }
     if (!title.trim()) return setError("Title is required");
     if (numAmount <= 0) return setError("Enter a valid amount");
     if (selectedIds.length === 0) return setError("Select at least one person to split with");
+    if (selectedIds.length === 1 && members.length <= 1) {
+      return setError("You're the only member — invite someone before adding an expense");
+    }
 
     let payload;
     if (split === "equal") {
